@@ -5,9 +5,9 @@
 // ── ansem-1 chain ──────────────────────────────────────────────────────────
 export const CHAIN_ID = process.env.NEXT_PUBLIC_CHAIN_ID ?? "ansem-1";
 export const RPC_URL =
-  process.env.NEXT_PUBLIC_ANSEM_RPC ?? "http://195.72.61.234:26657";
+  process.env.NEXT_PUBLIC_ANSEM_RPC ?? "https://rpc.ansemchain.fun";
 export const REST_URL =
-  process.env.NEXT_PUBLIC_ANSEM_REST ?? "http://195.72.61.234:1317";
+  process.env.NEXT_PUBLIC_ANSEM_REST ?? "https://rest.ansemchain.fun";
 export const DENOM = process.env.NEXT_PUBLIC_ANSEM_DENOM ?? "uchanse";
 export const DENOM_DECIMALS = 6;
 
@@ -41,7 +41,7 @@ export const AMM_CONTRACT =
 
 // ── indexer (our ansemchain-indexer on val1) ───────────────────────────────
 export const INDEXER_HTTP = (
-  process.env.NEXT_PUBLIC_ANSEM_API_URL ?? "http://195.72.61.234:3001/api"
+  process.env.NEXT_PUBLIC_ANSEM_API_URL ?? "https://api.ansemchain.fun/api"
 ).replace(/\/+$/, "");
 // SSE stream (not a WebSocket): the indexer serves /api/sse/feed.
 export const INDEXER_SSE = `${INDEXER_HTTP}/sse/feed`;
