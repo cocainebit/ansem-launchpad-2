@@ -1,0 +1,853 @@
+"use client";
+
+import dynamic from "next/dynamic";
+import { useParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { ArrowSquareOut, Check, CopySimple, DiscordLogo, GlobeSimple, TelegramLogo, User, XLogo } from "@phosphor-icons/react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useTokenDetail } from "@/hooks/use-token-detail";
+import { useTokenTrades } from "@/hooks/use-token-trades";
+import { useTokenHolders } from "@/hooks/use-token-holders";
+import { useCandles } from "@/hooks/use-candles";
+import { TradingChartSkeleton } from "@/components/trading/trading-chart-skeleton";
+import { FloorlaunchTradePanel } from "@/components/trading/floorlaunch-trade-panel";
+import type { Timeframe, TokenListItem, TokenTrade } from "@/lib/api";
+import { DEFAULT_TOKEN_SUPPLY } from "@/lib/chain-config";
+import { explorerUrl, solscanUrl } from "@/lib/floorlaunch/config";
+
+const TradingChart = dynamic(
+  () =>
+    import("@/components/trading/trading-chart").then(
+      (module) => module.TradingChart,
+    ),
+  { ssr: false, loading: () => <TradingChartSkeleton terminal /> },
+);
+
+const TIMEFRAMES: Array<{ value: Timeframe; label: string }> = [
+  { value: "1m", label: "1m" },
+  { value: "5m", label: "5m" },
+  { value: "15m", label: "15m" },
+  { value: "1h", label: "1H" },
+  { value: "4h", label: "4H" },
+  { value: "12h", label: "12H" },
+  { value: "1d", label: "1D" },
+];
+
+export default function TokenDetailPage() {
+  const params = useParams();
+  const address = params.address as string;
+  const [timeframe, setTimeframe] = useState<Timeframe>("1h");
+  const [chartHeight, setChartHeight] = useState(700);
+  const resizeStart = useRef({ y: 0, height: 700 });
+  const { data: token, isLoading, error } = useTokenDetail(address);
+  const { data: trades } = useTokenTrades(address, 2_000);
+  const stableTrades = useRef<{ address: string; data: TokenTrade[] }>({
+    address,
+    data: [],
+  });
+  if (stableTrades.current.address !== address) {
+    stableTrades.current = { address, data: [] };
+  }
+  if (trades?.length) {
+    stableTrades.current.data = trades;
+  }
+  const visibleTrades = trades?.length ? trades : stableTrades.current.data;
+  const candles = useCandles(address, timeframe);
+  const holdersQuery = useTokenHolders(address);
+
+  function startInformationResize(event: React.PointerEvent<HTMLDivElement>) {
+    resizeStart.current = { y: event.clientY, height: chartHeight };
+    event.currentTarget.setPointerCapture(event.pointerId);
+    document.body.style.cursor = "row-resize";
+    document.body.style.userSelect = "none";
+  }
+
+  function resizeInformation(event: React.PointerEvent<HTMLDivElement>) {
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) return;
+    const delta = event.clientY - resizeStart.current.y;
+    setChartHeight(
+      Math.min(1_000, Math.max(320, resizeStart.current.height + delta)),
+    );
+  }
+
+  function stopInformationResize(event: React.PointerEvent<HTMLDivElement>) {
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+  }
+
+  if (isLoading) return <TerminalSkeleton />;
+  if (error || !token) {
+    return (
+      <div className="flex min-h-[calc(100vh-64px)] items-center justify-center bg-[#0d0d0f] text-red-300">
+        Token not found
+      </div>
+    );
+  }
+
+  const solUsd = token.market.solUsd;
+  // Indexer current_price is raw price_uchanse (base micro-units per token,
+  // scaled 1e6). /1e6 -> CHANSE per token, then x oracle USD rate -> USD/token.
+  const price = (Number(token.current_price || 0) / 1e6) * solUsd;
+  const collectibleName = (token.name ?? "collectible").replace(/\s*Floor$/i, "");
+  const floorSol = token.market.cardIndexSol;
+  const liquidityCollectibles = floorSol > 0 ? token.market.ammSolReserve / floorSol : 0;
+  const stats = {
+    marketCap: currencyCompact(price * DEFAULT_TOKEN_SUPPLY),
+    // Per-token price is tiny; show significant digits instead of rounding to $0.
+    price: price >= 0.01 ? currencyCompact(price) : `$${Number(price.toPrecision(3))}`,
+    change: token.price_change_24h,
+    vol: currencyCompact((Number(token.volume_24h) / 1_000_000) * solUsd),
+    // Liquidity in collectible value - the whole point of a collectible market.
+    liquidity: `${formatCollectible(liquidityCollectibles)} ${collectibleName}`,
+    liquidityUsd: currencyCompact(token.market.ammSolReserve * solUsd),
+    holders: String(holdersQuery.data?.length ?? 0),
+  };
+
+  return (
+    <div className="terminal-page flex min-h-[calc(100vh-64px)] min-w-0 flex-col bg-[#0d0d0f] text-zinc-100 xl:grid xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_360px]">
+      <main className="flex min-w-0 flex-col bg-[#0d0d0f]">
+        <div className="flex h-[70px] shrink-0 items-center justify-between gap-6 overflow-x-auto border-b border-[#17171a] px-4 py-2">
+          <div className="flex shrink-0 items-center gap-2.5">
+            {token.image ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={token.image}
+                alt={token.name ?? token.symbol ?? "Token"}
+                className="h-11 w-11 rounded-full border border-[#34343a] bg-[#202024] object-cover"
+              />
+            ) : (
+              <span className="flex h-11 w-11 items-center justify-center rounded-full border border-[#34343a] bg-[#202024] text-sm text-zinc-400">
+                {token.symbol?.[0]}
+              </span>
+            )}
+            <div className="min-w-0">
+              <div className="flex h-8 items-center gap-1.5">
+                <p className="max-w-52 truncate text-[15px] font-bold leading-none text-zinc-100">{token.name}</p>
+                <span className="shrink-0 rounded border border-[#34343a] bg-[#1b1b1e] px-1.5 py-1 text-[9px] font-medium uppercase tracking-wide text-zinc-500">
+                  {token.market.dbcPool ? "Meteora DBC" : token.graduated ? "AMM" : "Curve"}
+                </span>
+                <span className="mx-1 h-5 w-px bg-[#29292d]" />
+                <div className="flex shrink-0 items-center gap-1">
+                  <SocialLink href={token.listing.links?.website} label="Website">
+                    <GlobeSimple size={15} />
+                  </SocialLink>
+                  <SocialLink href={token.listing.links?.twitter} label="X / Twitter">
+                    <XLogo size={15} />
+                  </SocialLink>
+                  <SocialLink href={token.listing.links?.telegram} label="Telegram">
+                    <TelegramLogo size={15} weight="fill" />
+                  </SocialLink>
+                  <SocialLink href={token.listing.links?.discord} label="Discord">
+                    <DiscordLogo size={15} weight="fill" />
+                  </SocialLink>
+                </div>
+              </div>
+              <div className="flex h-5 items-center gap-2 text-[11px] font-medium text-zinc-500">
+                <span className="max-w-40 truncate">{collectibleName}</span>
+                <span className="h-4 w-px bg-[#29292d]" />
+                <CopyValue value={token.mint} />
+              </div>
+            </div>
+          </div>
+          <div className="ml-auto flex shrink-0 items-center justify-end gap-2">
+            <StatTile label="Market cap" value={stats.marketCap} primary />
+            <StatTile label="Price" value={stats.price} />
+            <StatTile label="24h change" value={formatChange(stats.change)} tone={stats.change} />
+            <StatTile label="24h vol." value={stats.vol} />
+            <StatTile label="Liquidity" value={stats.liquidityUsd} />
+            <StatTile label="Holders" value={stats.holders} />
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-1 border-b border-[#1c1c1f] px-4 py-1.5 text-zinc-400">
+          {TIMEFRAMES.map(({ value, label }) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setTimeframe(value)}
+              className={
+                timeframe === value
+                  ? "rounded-md bg-[#29292d] px-2.5 py-1 text-xs font-semibold text-zinc-100"
+                  : "rounded-md px-2.5 py-1 text-xs font-semibold hover:bg-[#1b1b1e] hover:text-zinc-100"
+              }
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <div
+          className="terminal-chart shrink-0 overflow-hidden px-2 pt-1"
+          style={{ height: chartHeight }}
+        >
+          <TradingChart
+            tokenAddress={address}
+            terminal
+            timeframe={timeframe}
+            fallbackPrice={Number(token.current_price)}
+            solUsd={solUsd}
+            candleData={candles.data}
+            candleLoading={candles.isLoading}
+            candleError={candles.error}
+            onRetry={() => candles.refetch()}
+          />
+        </div>
+        <TokenInformationPanel
+          token={token}
+          trades={visibleTrades}
+          onResizeStart={startInformationResize}
+          onResize={resizeInformation}
+          onResizeEnd={stopInformationResize}
+        />
+      </main>
+      <aside className="min-w-0 space-y-3 bg-[#0d0d0f] p-4">
+        <FloorlaunchTradePanel token={token} />
+        <Overview token={token} trades={visibleTrades} />
+      </aside>
+    </div>
+  );
+}
+
+type InformationTab = "holders" | "transactions";
+
+function TokenInformationPanel({
+  token,
+  trades,
+  onResizeStart,
+  onResize,
+  onResizeEnd,
+}: {
+  token: TokenListItem;
+  trades: TokenTrade[];
+  onResizeStart: (event: React.PointerEvent<HTMLDivElement>) => void;
+  onResize: (event: React.PointerEvent<HTMLDivElement>) => void;
+  onResizeEnd: (event: React.PointerEvent<HTMLDivElement>) => void;
+}) {
+  const [tab, setTab] = useState<InformationTab>("holders");
+  const holders = useTokenHolders(token.address);
+  const stableHolders = useRef<{
+    address: string;
+    data: Array<{ address: string; balance: string }>;
+  }>({ address: token.address, data: [] });
+  if (stableHolders.current.address !== token.address) {
+    stableHolders.current = { address: token.address, data: [] };
+  }
+  if (holders.data?.length) {
+    stableHolders.current.data = holders.data;
+  }
+  const visibleHolders = holders.data?.length
+    ? holders.data
+    : stableHolders.current.data;
+
+  return (
+    <div
+      className="flex shrink-0 flex-col"
+      style={{ height: 700 }}
+    >
+      <div
+        role="separator"
+        aria-label="Resize chart height"
+        aria-orientation="horizontal"
+        onPointerDown={onResizeStart}
+        onPointerMove={onResize}
+        onPointerUp={onResizeEnd}
+        onPointerCancel={onResizeEnd}
+        className="group flex h-2.5 shrink-0 touch-none cursor-row-resize items-center justify-center"
+      >
+        <span className="h-1 w-10 rounded-full bg-[#34343a] transition-colors group-hover:bg-zinc-500 group-active:bg-[#6cef4b]" />
+      </div>
+      <section className="mx-2 mb-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-[#24242a] bg-[#0d0d0f]">
+      <div className="flex h-10 shrink-0 items-center gap-5 border-b border-[#202026] bg-[#0a0a0e] px-3">
+        <InformationTabButton active={tab === "holders"} onClick={() => setTab("holders")}>
+          Holders{visibleHolders.length ? ` (${visibleHolders.length})` : ""}
+        </InformationTabButton>
+        <InformationTabButton active={tab === "transactions"} onClick={() => setTab("transactions")}>
+          Transactions{trades.length ? ` (${trades.length})` : ""}
+        </InformationTabButton>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-auto">
+        {tab === "holders" && (
+          <HoldersTable
+            holders={visibleHolders}
+            loading={holders.isLoading}
+            symbol={token.symbol ?? "TOKEN"}
+          />
+        )}
+
+        {tab === "transactions" && (
+          <TransactionsTable trades={trades} symbol={token.symbol ?? "TOKEN"} baseLabel={token.base_label ?? "CHANSE"} />
+        )}
+      </div>
+      </section>
+    </div>
+  );
+}
+
+function InformationTabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`h-10 border-b-2 text-sm font-semibold transition-colors ${
+        active
+          ? "border-zinc-100 text-zinc-100"
+          : "border-transparent text-zinc-500 hover:text-zinc-200"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function HoldersTable({
+  holders,
+  loading,
+  symbol,
+}: {
+  holders: Array<{ address: string; balance: string }>;
+  loading: boolean;
+  symbol: string;
+}) {
+  if (loading) {
+    return <PanelMessage>Loading holders from Solana…</PanelMessage>;
+  }
+  if (!holders.length) {
+    return <PanelMessage>No holders found for this token.</PanelMessage>;
+  }
+
+  const supplyMicro = DEFAULT_TOKEN_SUPPLY * 1_000_000;
+  return (
+    <table className="w-full min-w-[600px] text-[13px]">
+      <thead className="sticky top-0 z-10 bg-[#0d0d0f] text-zinc-600">
+        <tr>
+          <th className="border-b border-[#1d1d23] px-4 py-2 text-left text-xs font-medium">Trader</th>
+          <th className="border-b border-[#1d1d23] px-4 py-2 text-right text-xs font-medium">Position</th>
+          <th className="border-b border-[#1d1d23] px-4 py-2 text-right text-xs font-medium">Supply</th>
+        </tr>
+      </thead>
+      <tbody>
+        {holders.map((holder) => {
+          const percentage = (Number(holder.balance) / supplyMicro) * 100;
+          return (
+            <tr key={holder.address} className="border-b border-[#17171c] transition-colors last:border-0 hover:bg-[#121217]">
+              <td className="px-4 py-2">
+                <div className="flex items-center gap-2.5">
+                  <WalletAvatar address={holder.address} />
+                  <div className="flex items-center gap-1.5">
+                    <a href={explorerUrl("address", holder.address)} target="_blank" rel="noreferrer" className="font-mono text-[13px] font-semibold text-zinc-200 hover:text-[#6cef4b]">
+                      {short(holder.address)}
+                    </a>
+                    <a href={solscanUrl("account", holder.address)} target="_blank" rel="noreferrer" title="View on Solscan" className="text-zinc-600 hover:text-[#6cef4b]">
+                      <ArrowSquareOut size={11} />
+                    </a>
+                  </div>
+                </div>
+              </td>
+              <td className="px-4 py-2 text-right">
+                <p className="text-[13px] font-semibold text-zinc-100">{formatTokenAmount(holder.balance)}</p>
+                <p className="mt-0.5 text-[11px] text-zinc-600">{symbol}</p>
+              </td>
+              <td className="px-4 py-2 text-right text-[13px] font-semibold text-zinc-400">
+                {percentage < 0.01 ? "<0.01" : percentage.toFixed(2)}%
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+function WalletAvatar({ address }: { address: string }) {
+  return (
+    <span
+      title={address}
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#202027] text-zinc-500 ring-1 ring-inset ring-white/10"
+    >
+      <User size={18} weight="fill" />
+    </span>
+  );
+}
+
+function TransactionsTable({ trades, symbol, baseLabel }: { trades: TokenTrade[]; symbol: string; baseLabel: string }) {
+  if (!trades.length) {
+    return <PanelMessage>No indexed transactions for this token yet.</PanelMessage>;
+  }
+
+  return (
+    <table className="w-full min-w-[720px] text-[13px]">
+      <thead className="sticky top-0 z-10 bg-[#0d0d0f] text-zinc-600">
+        <tr>
+          <th className="border-b border-[#1d1d23] px-4 py-2 text-left text-xs font-medium">Time</th>
+          <th className="border-b border-[#1d1d23] px-4 py-2 text-left text-xs font-medium">Type</th>
+          <th className="border-b border-[#1d1d23] px-4 py-2 text-right text-xs font-medium">{baseLabel}</th>
+          <th className="border-b border-[#1d1d23] px-4 py-2 text-right text-xs font-medium">{symbol}</th>
+          <th className="border-b border-[#1d1d23] px-4 py-2 text-left text-xs font-medium">Trader</th>
+          <th className="border-b border-[#1d1d23] px-4 py-2 text-right text-xs font-medium">Txn</th>
+        </tr>
+      </thead>
+      <tbody>
+        {trades.map((trade, index) => {
+          const buy = trade.action === "buy";
+          return (
+            <tr key={`${trade.tx_hash}-${index}`} className="border-b border-[#17171c] transition-colors last:border-0 hover:bg-[#121217]">
+              <td className="whitespace-nowrap px-4 py-2 text-zinc-500">{relativeTime(trade.time)} ago</td>
+              <td className="px-4 py-2">
+                <span className={`rounded px-2 py-0.5 text-[10px] font-bold uppercase ${buy ? "bg-[#0f2e1e] text-[#4ade80]" : "bg-[#3a1418] text-[#f87171]"}`}>
+                  {trade.action}
+                </span>
+              </td>
+              <td className="px-4 py-2 text-right text-[13px] font-semibold text-zinc-100">{compact(Number(trade.hodl_amount) / 1_000_000)}</td>
+              <td className="px-4 py-2 text-right text-[13px] font-semibold text-zinc-300">{compact(Number(trade.token_amount) / 1_000_000)}</td>
+              <td className="px-4 py-2 font-mono text-[13px]">
+                <a href={explorerUrl("address", trade.trader)} target="_blank" rel="noreferrer" className="text-zinc-500 hover:text-[#6cef4b]">{short(trade.trader)}</a>
+              </td>
+              <td className="px-4 py-2 text-right font-mono">
+                <a href={explorerUrl("tx", trade.tx_hash)} target="_blank" rel="noreferrer" className="text-zinc-500 hover:text-[#6cef4b]">{short(trade.tx_hash)}</a>
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+}
+
+function PanelMessage({ children }: { children: React.ReactNode }) {
+  return <div className="flex h-full min-h-36 items-center justify-center px-6 text-center text-sm text-zinc-500">{children}</div>;
+}
+
+function formatTokenAmount(micro: string): string {
+  const amount = Number(micro) / 1_000_000;
+  if (!Number.isFinite(amount)) return "0";
+  return Intl.NumberFormat("en-US", {
+    notation: amount >= 10_000 ? "compact" : "standard",
+    maximumFractionDigits: 2,
+  }).format(amount);
+}
+
+function StatTile({
+  label,
+  value,
+  tone,
+  primary = false,
+}: {
+  label: string;
+  value: string;
+  tone?: number | null;
+  primary?: boolean;
+}) {
+  return (
+    <div
+      className={`min-w-[88px] shrink-0 px-3 py-1.5 ${
+        primary ? "bg-transparent" : "rounded-lg bg-[#151517]"
+      }`}
+    >
+      <p className="text-center text-[11px] font-medium text-zinc-500">{label}</p>
+      <p
+        className={`text-center font-bold leading-5 ${primary ? "text-lg" : "text-sm"} ${
+          tone == null ? "text-zinc-100" : tone >= 0 ? "text-[#4ade80]" : "text-[#f87171]"
+        }`}
+      >
+        {value}
+      </p>
+    </div>
+  );
+}
+
+function TokenSummary({ token, price }: { token: TokenListItem; price: number }) {
+  const volumeUsd =
+    (Number(token.volume_24h) / 1_000_000) * token.market.solUsd;
+  return (
+    <section className="rounded-2xl border border-[#29292d] bg-[#151517] px-4 py-3">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2.5">
+          {token.image ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={token.image}
+              alt={token.name ?? token.symbol ?? "Token"}
+              className="h-9 w-9 shrink-0 rounded-lg object-cover"
+            />
+          ) : (
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#29292d] text-sm">
+              {token.symbol?.[0]}
+            </span>
+          )}
+          <div className="min-w-0">
+            <h1 className="truncate text-sm font-bold leading-tight">{token.name}</h1>
+            <p className="text-xs text-zinc-500">${token.symbol}</p>
+          </div>
+        </div>
+        <span className="shrink-0 rounded-full border border-[#34343a] bg-[#202024] px-2 py-0.5 text-[10px] font-semibold text-zinc-400">
+          {token.market.dbcPool ? "METEORA DBC" : token.graduated ? "AMM" : "CURVE"}
+        </span>
+      </div>
+      <div className="mt-3 flex items-end justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[11px] text-zinc-500">Market cap</p>
+          <p className="truncate text-xl font-bold tracking-tight">
+            {currencyCompact(price * DEFAULT_TOKEN_SUPPLY)}
+            <span className={`ml-1.5 text-xs ${changeClass(token.price_change_24h)}`}>
+              {formatChange(token.price_change_24h)}
+            </span>
+          </p>
+        </div>
+        <p className="shrink-0 text-xs font-semibold text-zinc-500">
+          Vol {currencyCompact(volumeUsd)}
+        </p>
+      </div>
+    </section>
+  );
+}
+
+type OverviewRange = "5m" | "1h" | "4h" | "1d";
+
+const OVERVIEW_RANGES: Array<{ value: OverviewRange; label: string; ms: number }> = [
+  { value: "5m", label: "5M", ms: 5 * 60_000 },
+  { value: "1h", label: "1H", ms: 60 * 60_000 },
+  { value: "4h", label: "4H", ms: 4 * 60 * 60_000 },
+  { value: "1d", label: "1D", ms: 24 * 60 * 60_000 },
+];
+
+function Overview({ token, trades }: { token: TokenListItem; trades: TokenTrade[] }) {
+  const [range, setRange] = useState<OverviewRange>("1d");
+  const [expanded, setExpanded] = useState(false);
+  // Keep `now` live so the rolling 5M/1H/4H/1D windows keep sliding as new trades
+  // arrive (the trades themselves refetch every 30s). A frozen `now` made the
+  // windows anchor to page-load time and go stale.
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
+
+  function tradesFor(ms: number) {
+    const cutoff = now - ms;
+    return trades.filter((trade) => new Date(trade.time).getTime() >= cutoff);
+  }
+
+  function changeFor(ms: number) {
+    const periodTrades = tradesFor(ms);
+    if (periodTrades.length < 2) return null;
+    const newest = periodTrades[0]?.price_sol ?? 0;
+    const oldest = periodTrades[periodTrades.length - 1]?.price_sol ?? 0;
+    return oldest > 0 ? ((newest / oldest) - 1) * 100 : null;
+  }
+
+  const selectedMs = OVERVIEW_RANGES.find((item) => item.value === range)?.ms ?? 86_400_000;
+  const periodTrades = tradesFor(selectedMs);
+  const buys = periodTrades.filter((trade) => trade.action === "buy");
+  const sells = periodTrades.filter((trade) => trade.action === "sell");
+  const buyVolume = buys.reduce((sum, trade) => sum + Number(trade.hodl_amount) / 1_000_000, 0) * token.market.solUsd;
+  const sellVolume = sells.reduce((sum, trade) => sum + Number(trade.hodl_amount) / 1_000_000, 0) * token.market.solUsd;
+  const buyers = new Set(buys.map((trade) => trade.trader)).size;
+  const sellers = new Set(sells.map((trade) => trade.trader)).size;
+
+  return (
+    <section className="relative rounded-xl border border-[#29292d] bg-[#101012] px-3 pb-4 pt-3">
+      <h2 className="text-sm font-semibold text-zinc-100">About {token.name}</h2>
+      <p className="mt-1.5 line-clamp-3 text-[11px] leading-[15px] text-zinc-400">
+        {token.description?.trim() || `Trade ${token.name} against its live collectible market.`}
+      </p>
+
+      <div className="mt-3 grid grid-cols-4 gap-1.5">
+        {OVERVIEW_RANGES.map((item) => {
+          const change = changeFor(item.ms);
+          const active = range === item.value;
+          return (
+            <button
+              key={item.value}
+              type="button"
+              onClick={() => setRange(item.value)}
+              className={`h-[46px] rounded-lg border px-1 py-1.5 text-center transition-colors ${
+                active
+                  ? "border-[#34343a] bg-[#202024]"
+                  : "border-[#29292d] bg-transparent hover:bg-[#151517]"
+              }`}
+            >
+              <span className="block text-[10px] font-semibold leading-3 text-zinc-400">{item.label}</span>
+              <span className={`mt-0.5 block text-[11px] font-bold leading-4 ${change == null ? "text-zinc-500" : change >= 0 ? "text-[#22c55e]" : "text-[#ff5b35]"}`}>
+                {change == null ? "—" : `${change >= 0 ? "▲" : "▼"} ${Math.abs(change).toFixed(2)}%`}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      <div className="mt-4 space-y-4">
+        <SplitMetric left={`${buys.length.toLocaleString()} buys`} right={`${sells.length.toLocaleString()} sells`} leftValue={buys.length} rightValue={sells.length} />
+        <SplitMetric left={`${currencyCompact(buyVolume)} vol.`} right={`${currencyCompact(sellVolume)} vol.`} leftValue={buyVolume} rightValue={sellVolume} />
+        <SplitMetric left={`${buyers.toLocaleString()} buyers`} right={`${sellers.toLocaleString()} sellers`} leftValue={buyers} rightValue={sellers} />
+      </div>
+
+      <div
+        className={`grid transition-[grid-template-rows,opacity,margin] duration-300 ease-out ${
+          expanded
+            ? "mt-4 grid-rows-[1fr] opacity-100"
+            : "mt-0 grid-rows-[0fr] opacity-0"
+        }`}
+        aria-hidden={!expanded}
+        inert={!expanded}
+      >
+        <div className="min-h-0 overflow-hidden">
+          <div className="border-t border-[#24242a] pt-3">
+            <div className="flex flex-wrap gap-1.5">
+              <OverviewLink href={token.listing.links?.website} label="Website">
+                <GlobeSimple size={12} />
+              </OverviewLink>
+              <OverviewLink href={token.listing.links?.twitter} label="Twitter">
+                <XLogo size={12} />
+              </OverviewLink>
+              <OverviewLink href={token.listing.links?.telegram} label="Telegram">
+                <TelegramLogo size={12} weight="fill" />
+              </OverviewLink>
+            </div>
+            <div className="mt-2 text-[10px]">
+              <OverviewDetailRow label="Created" value={overviewCreatedLabel(token, now)} />
+              <OverviewDetailRow label="Chain" value="ansemchain" />
+              <OverviewDetailRow
+                label="Venue"
+                value={token.market.dbcPool ? "Meteora DBC" : token.graduated ? "ANSEM AMM" : "Launch curve"}
+              />
+              <OverviewDetailRow label="Contract address">
+                <CopyValue value={token.mint} />
+              </OverviewDetailRow>
+            </div>
+          </div>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={() => setExpanded((value) => !value)}
+        aria-expanded={expanded}
+        className="absolute -bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-[#202024] px-3 py-1 text-[10px] font-semibold text-zinc-400 transition-colors hover:bg-[#29292f] hover:text-zinc-100"
+      >
+        {expanded ? "View less" : "View more"}
+      </button>
+    </section>
+  );
+}
+
+function OverviewLink({
+  href,
+  label,
+  children,
+}: {
+  href?: string;
+  label: string;
+  children: React.ReactNode;
+}) {
+  const className = "inline-flex h-7 items-center gap-1.5 rounded-lg border border-[#303038] bg-[#18181d] px-2.5 text-[11px] font-semibold text-zinc-200";
+  if (!href) {
+    return <span className={`${className} cursor-not-allowed opacity-40`}>{children}{label}</span>;
+  }
+  return (
+    <a href={externalUrl(href)} target="_blank" rel="noopener noreferrer" className={`${className} hover:bg-[#222228] hover:text-white`}>
+      {children}{label}
+    </a>
+  );
+}
+
+function OverviewDetailRow({
+  label,
+  value,
+  children,
+}: {
+  label: string;
+  value?: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div className="flex min-h-8 items-center gap-2.5">
+      <span className="shrink-0 text-[11px] font-medium text-zinc-500">{label}</span>
+      <span className="h-px min-w-3 flex-1 border-t border-dashed border-[#29292f]" />
+      <span className="min-w-0 shrink-0 text-right text-[11px] font-semibold text-zinc-100">{children ?? value}</span>
+    </div>
+  );
+}
+
+function overviewCreatedLabel(token: TokenListItem, now: number): string {
+  const createdAt = token.listing.launchedAt
+    ? token.listing.launchedAt * 1_000
+    : new Date(token.created_at ?? token.first_seen_at).getTime();
+  const seconds = Math.max(0, Math.floor((now - createdAt) / 1_000));
+  if (!Number.isFinite(seconds)) return "Unknown";
+  if (seconds < 60) return "Just now";
+  if (seconds < 3_600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86_400) return `${Math.floor(seconds / 3_600)}h ago`;
+  return `${Math.floor(seconds / 86_400)}d ago`;
+}
+
+function SplitMetric({
+  left,
+  right,
+  leftValue,
+  rightValue,
+}: {
+  left: string;
+  right: string;
+  leftValue: number;
+  rightValue: number;
+}) {
+  const total = leftValue + rightValue;
+  const leftWidth = total > 0 ? (leftValue / total) * 100 : 50;
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-3 text-xs font-semibold text-zinc-100">
+        <span>{left}</span>
+        <span>{right}</span>
+      </div>
+      <div className="mt-1.5 flex h-1.5 gap-1 overflow-hidden rounded-full">
+        <span className="rounded-full bg-[#22c55e]" style={{ width: `${leftWidth}%` }} />
+        <span className="flex-1 rounded-full bg-[#ff5b35]" />
+      </div>
+    </div>
+  );
+}
+
+function SocialLink({
+  href,
+  label,
+  children,
+}: {
+  href?: string;
+  label: string;
+  children: React.ReactNode;
+}) {
+  if (!href) {
+    return (
+      <span
+        title={`${label} link unavailable for this token`}
+        aria-label={`${label} link unavailable`}
+        aria-disabled="true"
+        className="flex h-6 w-6 cursor-not-allowed items-center justify-center rounded bg-[#19191f] text-zinc-600"
+      >
+        {children}
+      </span>
+    );
+  }
+
+  return (
+    <a
+      href={externalUrl(href)}
+      target="_blank"
+      rel="noopener noreferrer"
+      title={label}
+      aria-label={label}
+      className="flex h-6 w-6 items-center justify-center rounded bg-[#19191f] text-zinc-400 transition-colors hover:bg-[#24242b] hover:text-zinc-100"
+    >
+      {children}
+    </a>
+  );
+}
+
+function externalUrl(value: string): string {
+  return /^https?:\/\//i.test(value) ? value : `https://${value}`;
+}
+
+function CopyValue({ value }: { value: string }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copy() {
+    await navigator.clipboard.writeText(value);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 1_500);
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      className="group inline-flex max-w-full items-center gap-1.5 font-medium text-zinc-100 transition-colors hover:text-[#8ff573]"
+      aria-label={`Copy ${value}`}
+      title={value}
+    >
+      <span className="truncate">{short(value)}</span>
+      {copied ? (
+        <Check size={15} weight="bold" className="shrink-0 text-emerald-400" />
+      ) : (
+        <CopySimple
+          size={15}
+          className="shrink-0 text-zinc-500 transition-colors group-hover:text-[#8ff573]"
+        />
+      )}
+    </button>
+  );
+}
+
+function short(value: string): string {
+  return value.length > 18
+    ? `${value.slice(0, 8)}...${value.slice(-6)}`
+    : value;
+}
+
+function tiny(value: number): string {
+  return value ? `$${value.toFixed(8)}` : "$0.00000000";
+}
+
+function compact(value: number): string {
+  return Intl.NumberFormat("en-US", {
+    notation: "compact",
+    maximumFractionDigits: 2,
+  }).format(value || 0);
+}
+
+// Collectible-equivalent count: more decimals for fractional amounts.
+function formatCollectible(value: number): string {
+  if (!Number.isFinite(value) || value <= 0) return "0";
+  return value.toLocaleString("en-US", {
+    maximumFractionDigits: value < 1 ? 4 : 2,
+  });
+}
+
+function currencyCompact(value: number): string {
+  return Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+    notation: "compact",
+    maximumFractionDigits: 2,
+  }).format(value || 0);
+}
+
+function formatChange(value: number | null): string {
+  if (value == null) return "—";
+  return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
+}
+
+function changeClass(value: number | null): string {
+  if (value == null) return "ml-3 text-sm font-medium text-zinc-500";
+  return value >= 0
+    ? "ml-3 text-sm font-medium text-emerald-400"
+    : "ml-3 text-sm font-medium text-red-400";
+}
+
+function relativeTime(value: string): string {
+  const seconds = Math.max(
+    0,
+    Math.floor((Date.now() - new Date(value).getTime()) / 1_000),
+  );
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3_600) return `${Math.floor(seconds / 60)}m`;
+  if (seconds < 86_400) return `${Math.floor(seconds / 3_600)}h`;
+  return `${Math.floor(seconds / 86_400)}d`;
+}
+
+function TerminalSkeleton() {
+  return (
+    <div className="grid min-h-[calc(100vh-64px)] bg-[#0d0d0f] xl:grid-cols-[minmax(0,1fr)_360px]">
+      <Skeleton className="h-full rounded-none bg-[#151517]" />
+      <Skeleton className="h-full rounded-none bg-[#151517]" />
+    </div>
+  );
+}
