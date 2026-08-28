@@ -11,3 +11,4 @@ indexer/data/
 # local secrets
 
 .vercel
+.env*
