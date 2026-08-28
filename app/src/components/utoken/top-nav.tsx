@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { REST_URL } from "@/lib/floorlaunch/config";
-import { MagnifyingGlass, Plus, XLogo } from "@phosphor-icons/react";
+import { MagnifyingGlass, Plus, XLogo, BookOpen } from "@phosphor-icons/react";
 import { useTokens } from "@/hooks/use-tokens";
 import { ConnectButton } from "@/components/wallet/connect-button";
 import { DEFAULT_TOKEN_SUPPLY } from "@/lib/chain-config";
@@ -132,6 +132,17 @@ export function TopNav() {
             /
           </kbd>
         </button>
+
+        <a
+          href="https://docs.ansemchain.fun"
+          target="_blank"
+          rel="noreferrer"
+          aria-label="ansemchain docs"
+          title="Docs"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--hairline)] bg-[#1c1c1e] text-zinc-400 transition-colors hover:border-[var(--hairline-strong)] hover:text-white"
+        >
+          <BookOpen size={16} weight="bold" />
+        </a>
 
         <a
           href="https://x.com/ansemchainfun/"
