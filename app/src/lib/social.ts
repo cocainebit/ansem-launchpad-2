@@ -90,7 +90,12 @@ export async function saveProfile(address: string, profile: Profile, signer: Sig
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ address, profile, ts, ...sig }),
   });
-  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Could not save profile");
+  if (!r.ok) {
+    const body = (await r.json().catch(() => ({}))) as { error?: string; code?: string };
+    const err = new Error(body.error ?? "Could not save profile") as Error & { code?: string };
+    err.code = body.code;
+    throw err;
+  }
   return ((await r.json()) as { profile: Profile }).profile;
 }
 
@@ -161,6 +166,28 @@ function patchCachedPosts(
   qc.setQueriesData<Post[]>({ queryKey: ["social", "posts"] }, (old) =>
     old ? old.map((p) => (p.id === postId ? patch(p) : p)) : old,
   );
+  // Also patch the single-post detail cache (/post/[id]) so its counts + flags
+  // reflect the same optimistic toggle.
+  qc.setQueriesData<Post | null>({ queryKey: ["social", "post", postId] }, (old) =>
+    old && old.id === postId ? patch(old) : old,
+  );
+}
+
+/** A single post by id (+ engagement counts), for the isolated /post/[id] view. */
+export function usePost(id: string, viewer?: string | null) {
+  return useQuery({
+    queryKey: ["social", "post", id, viewer ?? ""],
+    queryFn: async (): Promise<Post | null> => {
+      const qs = viewer ? `?viewer=${encodeURIComponent(viewer)}` : "";
+      const r = await fetch(`/api/social/post/${encodeURIComponent(id)}${qs}`);
+      if (r.status === 404) return null;
+      if (!r.ok) throw new Error("Could not load post");
+      return ((await r.json()) as { post: Post }).post;
+    },
+    enabled: Boolean(id),
+    staleTime: 15_000,
+    retry: false,
+  });
 }
 
 /** Like / unlike a post, signed by the acting wallet. Returns the new count. */
@@ -209,19 +236,23 @@ export function useLikePost(viewer?: string | null) {
     },
     onMutate: async ({ postId, like }) => {
       await qc.cancelQueries({ queryKey: ["social", "posts"] });
+      await qc.cancelQueries({ queryKey: ["social", "post", postId] });
       const prev = qc.getQueriesData<Post[]>({ queryKey: ["social", "posts"] });
+      const prevOne = qc.getQueriesData<Post | null>({ queryKey: ["social", "post", postId] });
       patchCachedPosts(qc, postId, (p) => ({
         ...p,
         viewerLiked: like,
         likeCount: Math.max(0, (p.likeCount ?? 0) + (like ? 1 : -1)),
       }));
-      return { prev };
+      return { prev, prevOne };
     },
     onError: (_e, _v, ctx) => {
       ctx?.prev.forEach(([key, data]) => qc.setQueryData(key, data));
+      ctx?.prevOne.forEach(([key, data]) => qc.setQueryData(key, data));
     },
-    onSettled: () => {
+    onSettled: (_d, _e, { postId }) => {
       void qc.invalidateQueries({ queryKey: ["social", "posts"] });
+      void qc.invalidateQueries({ queryKey: ["social", "post", postId] });
     },
   });
 }
@@ -236,19 +267,23 @@ export function useRepostPost(viewer?: string | null) {
     },
     onMutate: async ({ postId, repost }) => {
       await qc.cancelQueries({ queryKey: ["social", "posts"] });
+      await qc.cancelQueries({ queryKey: ["social", "post", postId] });
       const prev = qc.getQueriesData<Post[]>({ queryKey: ["social", "posts"] });
+      const prevOne = qc.getQueriesData<Post | null>({ queryKey: ["social", "post", postId] });
       patchCachedPosts(qc, postId, (p) => ({
         ...p,
         viewerReposted: repost,
         repostCount: Math.max(0, (p.repostCount ?? 0) + (repost ? 1 : -1)),
       }));
-      return { prev };
+      return { prev, prevOne };
     },
     onError: (_e, _v, ctx) => {
       ctx?.prev.forEach(([key, data]) => qc.setQueryData(key, data));
+      ctx?.prevOne.forEach(([key, data]) => qc.setQueryData(key, data));
     },
-    onSettled: () => {
+    onSettled: (_d, _e, { postId }) => {
       void qc.invalidateQueries({ queryKey: ["social", "posts"] });
+      void qc.invalidateQueries({ queryKey: ["social", "post", postId] });
     },
   });
 }

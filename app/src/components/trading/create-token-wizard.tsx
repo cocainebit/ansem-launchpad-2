@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
-  Horse,
   Lightning,
   Coins,
   ChartLineUp,
@@ -168,17 +167,21 @@ async function fileToDataUrl(file: File, max = 256): Promise<string> {
 // entry with `{ img: "/horns/whatever.png" }` (or add `img` alongside `icon`)
 // and it renders in place, no other change needed.
 type RingEntry = { icon?: Icon; img?: string };
+// The revolving Horn NFT art (public/horns/ring/NN.png). Swap/extend by editing
+// this list only.
 const RING_ITEMS: RingEntry[] = [
-  { icon: Lightning },
-  { icon: Coins },
-  { icon: ChartLineUp },
-  { icon: Scales },
-  { icon: Gauge },
-  { icon: Waves },
-  { icon: Lock },
-  { icon: Timer },
-  { icon: ShieldCheck },
-  { icon: ArrowsLeftRight },
+  { img: "/horns/ring/01.png" },
+  { img: "/horns/ring/02.png" },
+  { img: "/horns/ring/03.png" },
+  { img: "/horns/ring/04.png" },
+  { img: "/horns/ring/05.png" },
+  { img: "/horns/ring/06.png" },
+  { img: "/horns/ring/07.png" },
+  { img: "/horns/ring/08.png" },
+  { img: "/horns/ring/09.png" },
+  { img: "/horns/ring/10.png" },
+  { img: "/horns/ring/11.png" },
+  { img: "/horns/ring/12.png" },
 ];
 // Precompute orbit positions (rounded so SSR and client markup agree).
 const RING = RING_ITEMS.map((item, i) => {
@@ -507,14 +510,14 @@ export function CreateTokenWizard() {
 function IntroStep({ onChoose, onSkip }: { onChoose: () => void; onSkip: () => void }) {
   return (
     <div className="flex flex-col items-center text-center">
-      {/* Circular collage of Horn marks. The ring container slowly revolves
-          around the center Horse; each mark counter-rotates to stay upright. */}
+      {/* Circular collage of revolving Horn NFT art. The ring container slowly
+          revolves; each mark counter-rotates to stay upright. */}
       <div className="relative mb-4 h-[180px] w-[180px]">
         <div aria-hidden className="absolute inset-0 rounded-full border border-white/[0.04]" />
         <div
           aria-hidden
-          className="absolute inset-[20px] rounded-full border border-[#6cf07f]/15"
-          style={{ background: "radial-gradient(circle, rgba(108,240,127,0.10), transparent 68%)" }}
+          className="absolute inset-[46px] rounded-full border border-[#6cf07f]/15"
+          style={{ background: "radial-gradient(circle, rgba(108,240,127,0.10), transparent 70%)" }}
         />
         <div aria-hidden className="wiz-orbit absolute inset-0">
           {RING.map((item, i) => (
@@ -534,9 +537,6 @@ function IntroStep({ onChoose, onSkip }: { onChoose: () => void; onSkip: () => v
             </span>
           ))}
         </div>
-        <span className="absolute left-1/2 top-1/2 flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-[#6cf07f]/40 bg-[#6cf07f] text-[#04160b] shadow-[0_0_34px_rgba(108,240,127,0.35)]">
-          <Horse size={26} weight="fill" />
-        </span>
       </div>
 
       <h1 style={HEADING} className="text-white">

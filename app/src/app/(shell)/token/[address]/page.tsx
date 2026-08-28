@@ -145,21 +145,28 @@ export default function TokenDetailPage() {
                 <span className="shrink-0 rounded border border-[#2a2a30] bg-[#161619] px-1.5 py-1 text-[9px] font-medium uppercase tracking-wide text-zinc-500">
                   {token.market.dbcPool ? "Meteora DBC" : token.graduated ? "AMM" : "Curve"}
                 </span>
-                <span className="mx-1 h-5 w-px bg-[#1e1e22]" />
-                <div className="flex shrink-0 items-center gap-1">
-                  <SocialLink href={token.listing.links?.website} label="Website">
-                    <GlobeSimple size={15} />
-                  </SocialLink>
-                  <SocialLink href={token.listing.links?.twitter} label="X / Twitter">
-                    <XLogo size={15} />
-                  </SocialLink>
-                  <SocialLink href={token.listing.links?.telegram} label="Telegram">
-                    <TelegramLogo size={15} weight="fill" />
-                  </SocialLink>
-                  <SocialLink href={token.listing.links?.discord} label="Discord">
-                    <DiscordLogo size={15} weight="fill" />
-                  </SocialLink>
-                </div>
+                {(token.listing.links?.website ||
+                  token.listing.links?.twitter ||
+                  token.listing.links?.telegram ||
+                  token.listing.links?.discord) && (
+                  <>
+                    <span className="mx-0.5 h-5 w-px bg-[#1e1e22]" />
+                    <div className="flex shrink-0 items-center gap-1">
+                      <SocialLink href={token.listing.links?.website} label="Website">
+                        <GlobeSimple size={15} />
+                      </SocialLink>
+                      <SocialLink href={token.listing.links?.twitter} label="X / Twitter">
+                        <XLogo size={15} />
+                      </SocialLink>
+                      <SocialLink href={token.listing.links?.telegram} label="Telegram">
+                        <TelegramLogo size={15} weight="fill" />
+                      </SocialLink>
+                      <SocialLink href={token.listing.links?.discord} label="Discord">
+                        <DiscordLogo size={15} weight="fill" />
+                      </SocialLink>
+                    </div>
+                  </>
+                )}
               </div>
               <div className="flex h-5 items-center gap-2 text-[11px] font-medium text-zinc-500">
                 <span className="max-w-40 truncate">{collectibleName}</span>
@@ -778,18 +785,8 @@ function SocialLink({
   label: string;
   children: React.ReactNode;
 }) {
-  if (!href) {
-    return (
-      <span
-        title={`${label} link unavailable for this token`}
-        aria-label={`${label} link unavailable`}
-        aria-disabled="true"
-        className="flex h-6 w-6 cursor-not-allowed items-center justify-center rounded bg-[#151518] text-zinc-600"
-      >
-        {children}
-      </span>
-    );
-  }
+  // Only render when the link is actually set; no dead placeholders.
+  if (!href) return null;
 
   return (
     <a

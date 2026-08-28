@@ -5,27 +5,33 @@
  * directly under the price chart on the token page.
  *
  * HONESTY NOTE (read before touching this):
- * The Horns program is built to wasm but NOT deployed and NOT attached to any
- * live pool, so a token does NOT carry queryable, live horn parameters today
- * (TokenListItem in src/lib/api.ts has no horn/hook field). Everything the clock
- * drives here is therefore an explicitly-labelled PREVIEW: an honest live
- * simulation of the MECHANISM, not on-chain data. It ticks off a real
- * client-side clock so the mechanic visibly moves, and it is marked with the
- * same "preview" pill the rest of the Horns surfaces use. No figure here is ever
- * presented as a real on-chain fee.
+ * The Horns stack is LIVE on ansem-1. This tracker reads the token's graduated
+ * AMM pool for a real attached hook (useTokenHorn) and, when one is attached,
+ * drives the readout from REAL on-chain params: for Fee Decay it fetches the
+ * decay horn's config and computes the current fee from start/end/decay_seconds
+ * + wall-clock block time; for Dynamic Fee it shows the real base / discount
+ * tiers. The "preview" pill drops to "live" in that case and no figure is
+ * simulated.
  *
- * FORWARD-COMPATIBLE SEAM:
- * The moment a token exposes real attached-horn params (a future `token.horn`
- * or a pool hook query returning the live slug + fee schedule), set `attached`
- * below to those params. `isLive` flips true, the preview pill drops, and the
- * readout should render the real values in place of the simulation. The per-horn
- * PRESETS map is keyed by horn slug so a real attached slug selects its readout
- * with no other change.
+ * When NO horn is attached (every pre-migration pool has hook=null, and a real
+ * per-pool readout can only appear once a coin graduates AFTER the migration
+ * with a horn bolted on), the tracker falls back to an explicitly-labelled
+ * PREVIEW: an honest client-clock simulation of the MECHANISM, never presented
+ * as on-chain data. The per-horn PRESETS map (keyed by catalog slug) powers that
+ * preview and its selector tabs.
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { TokenListItem } from "@/lib/api";
 import { HORNS } from "@/lib/horns-catalog";
+import {
+  useTokenHorn,
+  useDecayConfig,
+  useDynfeeConfig,
+  decayFeeBpsAt,
+  type DecayConfig,
+  type DynfeeConfig,
+} from "@/hooks/use-token-horn";
 
 /* ------------------------------------------------------------------ */
 /* Per-horn simulation model                                          */
@@ -166,28 +172,99 @@ const ACCENT = "#6cf07f";
 /* Component                                                          */
 /* ------------------------------------------------------------------ */
 
-/** Real, live attached-horn parameters for a pool. Empty today. */
-type AttachedHorn = { slug: string } | null;
+/* ------------------------------------------------------------------ */
+/* Real (on-chain) readouts                                           */
+/* ------------------------------------------------------------------ */
 
-// FORWARD-COMPATIBLE SEAM. The moment a token exposes real attached-horn params,
-// return `{ slug, ...schedule }` here (from `token.horn` or a pool hook query).
-// Until then it returns null and the whole panel runs as an explicitly-labelled
-// preview simulation of the mechanic.
-function readAttachedHorn(_token: TokenListItem): AttachedHorn {
-  return null;
+// Fee Decay, driven by the horn's real on-chain config + wall-clock time.
+// `nowSec` is real wall-clock seconds; the fee follows the on-chain linear
+// schedule between start_fee_bps and end_fee_bps over decay_seconds.
+function realDecayReadout(cfg: DecayConfig, nowSec: number): Readout {
+  const endSec = cfg.launchTime + cfg.decaySeconds;
+  const feeBps = decayFeeBpsAt(cfg, nowSec);
+  const settled = nowSec >= endSec;
+  const u = cfg.decaySeconds > 0 ? clamp01((nowSec - cfg.launchTime) / cfg.decaySeconds) : 1;
+  const remainingMin = Math.ceil(Math.max(0, endSec - nowSec) / 60);
+  const startPct = cfg.startFeeBps / 100;
+  const endPct = cfg.endFeeBps / 100;
+  const range = cfg.startFeeBps - cfg.endFeeBps;
+  return {
+    headline: pct(feeBps / 100),
+    headlineLabel: "Current fee",
+    caption: settled
+      ? `Settled to base ${pct(endPct)}`
+      : `Decaying to ${pct(endPct)} base, ~${remainingMin}m remaining`,
+    settled,
+    marker: u,
+    // Normalized height: 1 at the launch fee, 0 at the base fee (linear).
+    sample: (x) => {
+      const f = cfg.startFeeBps + (cfg.endFeeBps - cfg.startFeeBps) * x;
+      return range !== 0 ? clamp01((f - cfg.endFeeBps) / range) : 0;
+    },
+    startLabel: `${pct(startPct)} launch`,
+    endLabel: `${pct(endPct)} base`,
+  };
+}
+
+// Dynamic Fee: real base / discount tiers from the horn's on-chain config. Not a
+// time trajectory, so it rests; the track shows the two tiers.
+function realDynfeeReadout(cfg: DynfeeConfig): Readout {
+  const basePct = cfg.baseFeeBps / 100;
+  const discPct = cfg.discountFeeBps / 100;
+  const minAnsem = Number(cfg.minAnsemStake) / 1e6;
+  const minLabel = Number.isFinite(minAnsem)
+    ? minAnsem.toLocaleString(undefined, { maximumFractionDigits: 0 })
+    : "-";
+  return {
+    headline: pct(basePct),
+    headlineLabel: "Base fee",
+    caption: `ANSEM stakers pay ${pct(discPct)} with ${minLabel} ANSEM staked`,
+    settled: true,
+    marker: 1,
+    // Two tiers: discounted (low) then base (high).
+    sample: (x) => (x < 0.5 ? 0 : 1),
+    startLabel: `${pct(discPct)} staker`,
+    endLabel: `${pct(basePct)} base`,
+  };
+}
+
+// Attached horn whose numeric readout we cannot (yet) compute, or whose config
+// is still loading. Honest: names the horn, shows "-" rather than a fake value.
+function liveMinimalReadout(name: string | null): Readout {
+  return {
+    headline: "-",
+    headlineLabel: name ?? "Attached horn",
+    caption: "Attached to this pool. Live fee schedule loading.",
+    settled: true,
+    marker: 0,
+    sample: () => 0.5,
+    startLabel: "on-chain",
+    endLabel: "live",
+  };
 }
 
 export function HornLiveTracker({ token }: { token: TokenListItem }) {
-  const attached = readAttachedHorn(token);
-  const isLive = attached != null;
+  // Real per-token attached-horn read (null / attached:false for pre-hook pools).
+  const hornQ = useTokenHorn(token);
+  const attachedHorn = hornQ.data?.attached ? hornQ.data : null;
+  const attachedSlug = attachedHorn?.slug ?? null;
+  const isLive = attachedHorn != null && attachedSlug != null;
 
-  const [slug, setSlug] = useState<string>(attached?.slug ?? "decay");
+  // Real on-chain params for the attached horn (queried only when relevant).
+  const decayQ = useDecayConfig(
+    isLive && attachedSlug === "decay" ? attachedHorn!.address : null,
+  );
+  const dynfeeQ = useDynfeeConfig(
+    isLive && attachedSlug === "dynfee" ? attachedHorn!.address : null,
+  );
+
+  const [slug, setSlug] = useState<string>("decay");
   const [mounted, setMounted] = useState(false);
   const [motionOk, setMotionOk] = useState(true);
   const [nowMs, setNowMs] = useState(0);
   const launchRef = useRef(0);
 
-  // Reset the simulated launch whenever the tracked horn changes.
+  // Reset the simulated launch whenever the tracked preview horn changes.
   useEffect(() => {
     launchRef.current = Date.now();
     setNowMs(Date.now());
@@ -210,9 +287,29 @@ export function HornLiveTracker({ token }: { token: TokenListItem }) {
   }, []);
 
   const elapsedSec = mounted ? Math.max(0, (nowMs - launchRef.current) / 1000) : 0;
-  const preset = PRESETS[slug] ?? PRESETS.decay;
-  const horn = HORNS.find((h) => h.slug === slug);
-  const readout = preset.compute(elapsedSec);
+
+  // The horn identity shown: the real attached horn when live, else the
+  // previewed one from the selector.
+  const activeSlug = isLive ? attachedSlug! : slug;
+  const horn = HORNS.find((h) => h.slug === activeSlug);
+
+  // Readout: REAL on-chain values when a horn is attached, otherwise the
+  // explicitly-labelled preview simulation. The decay fee is computed from real
+  // config + wall-clock block time; never a simulated number when live.
+  let readout: Readout;
+  if (isLive && attachedSlug === "decay" && decayQ.data) {
+    const nowSec = mounted ? nowMs / 1000 : decayQ.data.launchTime;
+    readout = realDecayReadout(decayQ.data, nowSec);
+  } else if (isLive && attachedSlug === "dynfee" && dynfeeQ.data) {
+    readout = realDynfeeReadout(dynfeeQ.data);
+  } else if (isLive) {
+    // Attached, but its config is still loading (or a horn without a numeric
+    // schedule): honest placeholder, never a simulated figure.
+    readout = liveMinimalReadout(attachedHorn!.name);
+  } else {
+    const preset = PRESETS[slug] ?? PRESETS.decay;
+    readout = preset.compute(elapsedSec);
+  }
 
   const replay = () => {
     launchRef.current = Date.now();
@@ -276,7 +373,7 @@ export function HornLiveTracker({ token }: { token: TokenListItem }) {
       <div className="mt-3 grid gap-3 rounded-[10px] border border-[#1a1a1e] bg-[#0a0a0b] p-3 sm:grid-cols-[minmax(0,150px)_minmax(0,1fr)]">
         {/* Big current value. Keyed on the horn slug (not the ticking value) so
             the entry animation replays on a horn switch, never on a 1s tick. */}
-        <div key={slug} className="horn-swap flex flex-col justify-center">
+        <div key={activeSlug} className="horn-swap flex flex-col justify-center">
           <p className="text-[9px] uppercase tracking-[0.16em] text-zinc-600">
             {readout.headlineLabel}
           </p>
@@ -291,7 +388,7 @@ export function HornLiveTracker({ token }: { token: TokenListItem }) {
 
         {/* Trajectory track. Same slug key so the curve swaps in step with the
             readout, and stays put across the per-second value ticks. */}
-        <div key={`${slug}-track`} className="horn-swap flex flex-col justify-center">
+        <div key={`${activeSlug}-track`} className="horn-swap flex flex-col justify-center">
           <TrajectoryTrack readout={readout} accent={ACCENT} />
           <div className="mt-1.5 flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.12em] text-zinc-600">
             <span>{readout.startLabel}</span>
@@ -305,7 +402,7 @@ export function HornLiveTracker({ token }: { token: TokenListItem }) {
         <p className="text-[10px] leading-4 text-zinc-600">
           {isLive
             ? "Live fee schedule read from this pool's attached horn."
-            : "Preview: a live simulation of the mechanic. Real per-pool fees appear once the Horns program is wired to the indexer."}
+            : "Preview: a live simulation of the mechanic. A real per-pool readout appears once this coin's pool has a horn attached."}
         </p>
         {!isLive && readout.settled ? (
           <button

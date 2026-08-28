@@ -83,6 +83,34 @@ export function getHornVaultAddress(): string | null {
   return addr.startsWith("ansem1") ? addr : null;
 }
 
+// ── Horn contracts, live on ansem-1 (deployed 2026-08-28) ───────────────────
+// The three horn contracts that back the graduation hooks + skim routing:
+//   Fee-Share  routes each pool's swap-fee skim into the Vault's two sinks
+//   Fee Decay  launch fee starts high and decays down (registry slug "decay")
+//   Dynamic Fee adjusts the swap fee to conditions (registry slug "dynfee")
+// These are env-supplied so a regenesis can repoint them without a rebuild.
+// A pool's attached hook is resolved by address against these + the launchpad
+// horn_registry_all, so the UI can name the horn on a graduated pool.
+function envAnsemAddr(raw: string | undefined): string | null {
+  const addr = (raw ?? "").trim();
+  return addr.startsWith("ansem1") ? addr : null;
+}
+export function getHornFeeShareAddress(): string | null {
+  return envAnsemAddr(process.env.NEXT_PUBLIC_HORN_FEESHARE_ADDRESS);
+}
+export function getHornDecayAddress(): string | null {
+  return envAnsemAddr(process.env.NEXT_PUBLIC_HORN_DECAY_ADDRESS);
+}
+export function getHornDynfeeAddress(): string | null {
+  return envAnsemAddr(process.env.NEXT_PUBLIC_HORN_DYNFEE_ADDRESS);
+}
+/** True once the horn stack's addresses are present in the build. Combined with
+ *  a resolving launchpad HornConfig, this is what flips the Horns surfaces from
+ *  "preview" to "live". */
+export function hornsConfigured(): boolean {
+  return Boolean(getHornVaultAddress() && getHornFeeShareAddress());
+}
+
 export const IS_LOCALNET =
   RPC_URL.includes("127.0.0.1") || RPC_URL.includes("localhost");
 export const IS_DEVNET = false;

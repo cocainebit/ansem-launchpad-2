@@ -366,6 +366,18 @@ export async function postExists(id: string): Promise<boolean> {
   return db.posts.some((p) => p.id === id);
 }
 
+/**
+ * A single post by id, with engagement counts (and viewer flags when a viewer is
+ * supplied). Returns null when no post with that id exists. Backs the isolated
+ * /post/[id] detail view.
+ */
+export async function getPost(id: string, viewer?: string): Promise<PostWithMeta | null> {
+  const db = await load();
+  const p = db.posts.find((x) => x.id === id);
+  if (!p) return null;
+  return withMeta(db, p, viewer);
+}
+
 // ── post engagement: likes, reposts, replies ─────────────────────────────────
 
 /** Toggle a viewer's like on a post. Returns the new like count. */

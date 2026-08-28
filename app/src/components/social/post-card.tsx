@@ -1,7 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
@@ -35,13 +37,18 @@ export function PostCard({
   post,
   wallet,
   onChanged,
+  expanded = false,
 }: {
   post: Post;
   wallet: Wallet;
   onChanged?: () => Promise<void> | void;
+  /** Detail-view rendering: larger body, full reply thread always open, and the
+   *  card itself does NOT navigate (it IS the isolated view). */
+  expanded?: boolean;
 }) {
   const profile = useProfile(post.author);
   const qc = useQueryClient();
+  const router = useRouter();
   const p = profile.data ?? {};
   const name = p.displayName || (p.username ? `@${p.username}` : short(post.author));
 
@@ -49,7 +56,78 @@ export function PostCard({
   const repostM = useRepostPost(wallet.address);
   const [showReplies, setShowReplies] = useState(false);
   const [repostMenu, setRepostMenu] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number } | null>(null);
   const [quoting, setQuoting] = useState(false);
+  const replyRef = useRef<HTMLDivElement>(null);
+  const repostRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Open the repost menu as a body-level portal anchored under the trigger. A
+  // portal is required because sibling post cards create stacking contexts (via
+  // ansem-fade-in), which trap an in-card absolute dropdown behind the next card
+  // so clicks land on the post below. At the body root nothing can cover it.
+  function openRepostMenu() {
+    if (repostMenu) {
+      setRepostMenu(false);
+      return;
+    }
+    const r = repostRef.current?.getBoundingClientRect();
+    if (r) setMenuPos({ top: r.bottom + 4, left: r.left });
+    setRepostMenu(true);
+  }
+
+  // Close on an outside click (checking both the trigger and the portal menu) and
+  // on scroll, since the fixed position would otherwise go stale.
+  useEffect(() => {
+    if (!repostMenu) return;
+    function onDown(e: MouseEvent) {
+      const t = e.target as Node;
+      if (repostRef.current?.contains(t) || menuRef.current?.contains(t)) return;
+      setRepostMenu(false);
+    }
+    function onScroll() {
+      setRepostMenu(false);
+    }
+    document.addEventListener("mousedown", onDown);
+    window.addEventListener("scroll", onScroll, true);
+    return () => {
+      document.removeEventListener("mousedown", onDown);
+      window.removeEventListener("scroll", onScroll, true);
+    };
+  }, [repostMenu]);
+
+  // In the detail view the thread is permanently open; in the feed the reply
+  // button toggles a quick-peek panel (unchanged behaviour).
+  const repliesVisible = expanded || showReplies;
+
+  /** Open the isolated /post/[id] detail from a whole-card click (feed only). */
+  function openDetail() {
+    if (expanded) return;
+    // Don't hijack a text selection / drag as a navigation.
+    if (typeof window !== "undefined") {
+      const sel = window.getSelection();
+      if (sel && sel.toString().length > 0) return;
+    }
+    router.push(`/post/${post.id}`);
+  }
+
+  function onCardKeyDown(e: React.KeyboardEvent) {
+    if (expanded) return;
+    if (e.key === "Enter") {
+      e.preventDefault();
+      router.push(`/post/${post.id}`);
+    }
+  }
+
+  function onReplyClick() {
+    if (expanded) {
+      replyRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    } else {
+      setShowReplies((s) => !s);
+    }
+  }
+
+  const stop = (e: React.MouseEvent) => e.stopPropagation();
 
   function requireWallet(): boolean {
     if (!wallet.address) {
@@ -85,8 +163,8 @@ export function PostCard({
   async function onShare() {
     const url =
       typeof window !== "undefined"
-        ? `${window.location.origin}/feed#${post.id}`
-        : `/feed#${post.id}`;
+        ? `${window.location.origin}/post/${post.id}`
+        : `/post/${post.id}`;
     try {
       await navigator.clipboard.writeText(url);
       toast.success("Link copied");
@@ -98,36 +176,49 @@ export function PostCard({
   async function refreshReplies() {
     await qc.invalidateQueries({ queryKey: ["social", "replies", post.id] });
     await qc.invalidateQueries({ queryKey: ["social", "posts"] });
+    await qc.invalidateQueries({ queryKey: ["social", "post", post.id] });
   }
 
+  const textClass = expanded
+    ? "mt-1 whitespace-pre-wrap break-words font-sans text-[17px] leading-7 text-zinc-100"
+    : "mt-0.5 whitespace-pre-wrap break-words font-sans text-[14px] leading-6 text-zinc-200";
+
   return (
-    <div className="ansem-fade-in flex gap-3 border-b border-[var(--hairline)] px-1 py-4">
-      <Link href={`/creator/${post.author}`} className="shrink-0" aria-label={`${name}'s profile`}>
-        <Avatar src={p.avatar} className="h-10 w-10" iconSize={20} />
+    <div
+      className={
+        expanded
+          ? "ansem-fade-in flex gap-3 px-1 py-4"
+          : "ansem-fade-in flex cursor-pointer gap-3 border-b border-[var(--hairline)] px-1 py-4 transition-colors hover:bg-white/[0.015]"
+      }
+      onClick={expanded ? undefined : openDetail}
+      onKeyDown={expanded ? undefined : onCardKeyDown}
+      role={expanded ? undefined : "link"}
+      tabIndex={expanded ? undefined : 0}
+      aria-label={expanded ? undefined : `Open post by ${name}`}
+    >
+      <Link
+        href={`/creator/${post.author}`}
+        className="shrink-0"
+        aria-label={`${name}'s profile`}
+        onClick={stop}
+      >
+        <Avatar src={p.avatar} className={expanded ? "h-11 w-11" : "h-10 w-10"} iconSize={expanded ? 22 : 20} />
       </Link>
       <div className="min-w-0 flex-1">
         <PostIdentity profile={p} address={post.author} createdAt={post.createdAt} />
 
-        {post.text && (
-          <p className="mt-0.5 whitespace-pre-wrap break-words font-sans text-[14px] leading-6 text-zinc-200">
-            {post.text}
-          </p>
-        )}
+        {post.text && <p className={textClass}>{post.text}</p>}
 
         {/* Inline image */}
         {post.image && (
-          <Link
-            href={`/creator/${post.author}`}
-            className="mt-2 block w-fit"
-            onClick={(e) => e.preventDefault()}
-          >
+          <div className="mt-2 w-fit">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={post.image}
               alt=""
-              className="max-h-[420px] w-full rounded-xl border border-[var(--hairline)] object-cover"
+              className={`w-full rounded-xl border border-[var(--hairline)] object-cover ${expanded ? "max-h-[560px]" : "max-h-[420px]"}`}
             />
-          </Link>
+          </div>
         )}
 
         {/* Token preview banner */}
@@ -136,18 +227,37 @@ export function PostCard({
         {/* Quoted post embed */}
         {post.quoted && <QuotedPost post={post.quoted} />}
 
+        {/* Full timestamp (detail view) */}
+        {expanded && (
+          <div
+            className="mt-3 border-b border-[var(--hairline)] pb-3 font-mono text-[13px] text-zinc-500"
+            title={new Date(post.createdAt).toISOString()}
+          >
+            {new Date(post.createdAt).toLocaleString(undefined, {
+              hour: "2-digit",
+              minute: "2-digit",
+              day: "numeric",
+              month: "short",
+              year: "numeric",
+            })}
+          </div>
+        )}
+
         {/* Action row */}
-        <div className="relative mt-2 flex items-center gap-1 text-zinc-500">
+        <div
+          className={`relative flex items-center text-zinc-500 ${expanded ? "mt-1 gap-2" : "mt-2 gap-1"}`}
+          onClick={stop}
+        >
           <ActionButton
             icon={<ChatCircle size={17} weight="regular" />}
             count={post.replyCount}
             label="Reply"
-            active={showReplies}
+            active={!expanded && showReplies}
             activeClass="text-[#6cf07f]"
-            onClick={() => setShowReplies((s) => !s)}
+            onClick={onReplyClick}
           />
 
-          <div className="relative">
+          <div ref={repostRef} className="relative">
             <ActionButton
               icon={<Repeat size={17} weight={post.viewerReposted ? "bold" : "regular"} />}
               count={post.repostCount}
@@ -155,37 +265,35 @@ export function PostCard({
               active={Boolean(post.viewerReposted)}
               activeClass="text-[#6cf07f]"
               busy={repostM.isPending}
-              onClick={() => setRepostMenu((o) => !o)}
+              onClick={openRepostMenu}
             />
-            {repostMenu && (
-              <>
+          </div>
+          {repostMenu && menuPos &&
+            createPortal(
+              <div
+                ref={menuRef}
+                style={{ position: "fixed", top: menuPos.top, left: menuPos.left, zIndex: 1000 }}
+                className="ansem-fade-in w-40 overflow-hidden rounded-lg border border-[var(--hairline)] bg-[#1c1c1e] py-1 shadow-xl"
+              >
                 <button
                   type="button"
-                  className="fixed inset-0 z-10 cursor-default"
-                  aria-label="Close menu"
-                  onClick={() => setRepostMenu(false)}
-                />
-                <div className="ansem-fade-in absolute left-0 top-9 z-20 w-40 overflow-hidden rounded-lg border border-[var(--hairline)] bg-[#1c1c1e] py-1 shadow-xl">
-                  <button
-                    type="button"
-                    onClick={onRepost}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left font-sans text-[13px] text-zinc-200 hover:bg-[#232326]"
-                  >
-                    <Repeat size={15} weight="regular" />
-                    {post.viewerReposted ? "Undo repost" : "Repost"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={onQuote}
-                    className="flex w-full items-center gap-2 px-3 py-2 text-left font-sans text-[13px] text-zinc-200 hover:bg-[#232326]"
-                  >
-                    <Quotes size={15} weight="regular" />
-                    Quote
-                  </button>
-                </div>
-              </>
+                  onClick={onRepost}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left font-sans text-[13px] text-zinc-200 hover:bg-[#232326]"
+                >
+                  <Repeat size={15} weight="regular" />
+                  {post.viewerReposted ? "Undo repost" : "Repost"}
+                </button>
+                <button
+                  type="button"
+                  onClick={onQuote}
+                  className="flex w-full items-center gap-2 px-3 py-2 text-left font-sans text-[13px] text-zinc-200 hover:bg-[#232326]"
+                >
+                  <Quotes size={15} weight="regular" />
+                  Quote
+                </button>
+              </div>,
+              document.body,
             )}
-          </div>
 
           <ActionButton
             icon={<Heart size={17} weight={post.viewerLiked ? "fill" : "regular"} />}
@@ -207,12 +315,12 @@ export function PostCard({
 
         {/* Inline quote composer */}
         {quoting && (
-          <div className="ansem-fade-in mt-2">
+          <div className="ansem-fade-in mt-2" onClick={stop}>
             <PostComposer
               wallet={wallet}
               quoteOf={post}
               autoFocus
-              placeholder="Add a comment"
+              placeholder="Add your take"
               onCancel={() => setQuoting(false)}
               onPosted={async () => {
                 setQuoting(false);
@@ -223,7 +331,11 @@ export function PostCard({
         )}
 
         {/* Replies */}
-        {showReplies && <ReplyPanel post={post} wallet={wallet} onReplied={refreshReplies} />}
+        {repliesVisible && (
+          <div ref={replyRef} onClick={stop}>
+            <ReplyPanel post={post} wallet={wallet} onReplied={refreshReplies} />
+          </div>
+        )}
       </div>
     </div>
   );
@@ -272,6 +384,7 @@ function QuotedPost({ post }: { post: Post }) {
   return (
     <Link
       href={`/creator/${post.author}`}
+      onClick={(e) => e.stopPropagation()}
       className="mt-2 block rounded-xl border border-[var(--hairline)] bg-[#161616] p-3 transition-colors hover:border-[var(--hairline-strong)]"
     >
       <div className="flex items-center gap-1.5">

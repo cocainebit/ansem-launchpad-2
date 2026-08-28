@@ -74,8 +74,10 @@ export function ProfileEditModal({
   const wallet = useFloorWallet();
   const [form, setForm] = useState<Profile>(initial);
   const [saving, setSaving] = useState(false);
+  const [usernameError, setUsernameError] = useState<string | null>(null);
 
   function set<K extends keyof Profile>(k: K, v: string) {
+    if (k === "username") setUsernameError(null);
     setForm((f) => ({ ...f, [k]: v }));
   }
 
@@ -91,13 +93,21 @@ export function ProfileEditModal({
       return;
     }
     setSaving(true);
+    setUsernameError(null);
     try {
       await saveProfile(address, form, wallet);
       toast.success("Profile saved");
       onSaved();
       onClose();
     } catch (e) {
-      toast.error("Could not save", { description: e instanceof Error ? e.message : String(e) });
+      // A taken username is a fixable input error: keep the modal open and show
+      // it inline on the field rather than a generic toast.
+      const code = (e as { code?: string })?.code;
+      if (code === "username_taken") {
+        setUsernameError(e instanceof Error ? e.message : "That username is taken");
+      } else {
+        toast.error("Could not save", { description: e instanceof Error ? e.message : String(e) });
+      }
     } finally {
       setSaving(false);
     }
@@ -125,7 +135,13 @@ export function ProfileEditModal({
           />
 
           <Labeled label="Username">
-            <div className="flex h-10 items-center rounded-lg border border-[var(--hairline)] bg-[#202022] px-3 focus-within:border-[var(--hairline-strong)]">
+            <div
+              className={`flex h-10 items-center rounded-lg border bg-[#202022] px-3 ${
+                usernameError
+                  ? "border-red-500/60"
+                  : "border-[var(--hairline)] focus-within:border-[var(--hairline-strong)]"
+              }`}
+            >
               <span className="text-[14px] text-zinc-500">@</span>
               <input
                 className="h-full flex-1 bg-transparent px-1 text-[14px] text-zinc-100 outline-none placeholder:text-zinc-600"
@@ -138,7 +154,11 @@ export function ProfileEditModal({
                 spellCheck={false}
               />
             </div>
-            <span className="mt-1 block text-[11px] text-zinc-600">3-20 chars: letters, numbers, underscore. People can find you by @username.</span>
+            {usernameError ? (
+              <span className="mt-1 block text-[11px] text-red-400">{usernameError}. Pick another.</span>
+            ) : (
+              <span className="mt-1 block text-[11px] text-zinc-600">3-20 chars: letters, numbers, underscore. People can find you by @username.</span>
+            )}
           </Labeled>
           <Labeled label="Display name">
             <input className={field} value={form.displayName ?? ""} onChange={(e) => set("displayName", e.target.value)} placeholder="satoshi" maxLength={40} />

@@ -8,7 +8,6 @@ import {
   Globe,
   LockSimple,
   Plus,
-  Sparkle,
   TelegramLogo,
   X,
   XLogo,
@@ -104,10 +103,7 @@ export function TokenProposals({ token }: { token: string }) {
 
 function EmptyState() {
   return (
-    <div className="flex min-h-40 flex-col items-center justify-center gap-3 py-6 text-center">
-      <span className="flex h-12 w-12 items-center justify-center rounded-full border border-[#1e1e22] bg-[#131316] text-[#6cef4b]">
-        <Sparkle size={22} weight="fill" />
-      </span>
+    <div className="flex min-h-40 flex-col items-center justify-center py-6 text-center">
       <div>
         <p className="text-[14px] font-semibold text-zinc-200">No token proposals yet</p>
         <p className="mt-1 max-w-xs text-[12px] text-zinc-500">

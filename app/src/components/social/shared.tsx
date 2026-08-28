@@ -129,6 +129,7 @@ export function PostIdentity({
       <div className="flex items-center gap-x-1.5">
         <Link
           href={`/creator/${address}`}
+          onClick={(e) => e.stopPropagation()}
           className="truncate font-sans text-[14px] font-semibold text-zinc-100 hover:underline"
         >
           {name}
@@ -144,6 +145,7 @@ export function PostIdentity({
       {showHandle && handle && (
         <Link
           href={`/creator/${address}`}
+          onClick={(e) => e.stopPropagation()}
           className="block truncate font-mono text-[12px] text-zinc-500 hover:text-zinc-400"
         >
           {handle}

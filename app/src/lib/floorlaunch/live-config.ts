@@ -132,19 +132,59 @@ export async function getOracleContract(): Promise<string> {
   }
 }
 
-/** Horn Vault contract (ansem-horn-vault, native staking). Env is PRIMARY (the
- *  contract is not deployed yet); a reserved registry slot is the secondary
- *  source. Returns null when neither is set, so callers render the honest
- *  preview state instead of live data. */
+// ── runtime Horn Vault discovery ────────────────────────────────────────────
+// The Horns stack is LIVE (deployed 2026-08-28). The vault address is set in
+// env (NEXT_PUBLIC_HORN_VAULT_ADDRESS), but NEXT_PUBLIC_* values are inlined at
+// build time, so a dev server already running when the env was added may not
+// carry it. As a robust, env-independent fallback we DISCOVER the vault from the
+// live chain: launchpad horn_config -> feeshare address -> feeshare config ->
+// vault. This only needs the (genesis-stable) launchpad address, so /vault goes
+// live in the running server with no restart.
+async function smartQuery<T>(contract: string, msg: unknown): Promise<T> {
+  const rest = REST_URL.replace(/\/$/, "");
+  const res = await fetch(
+    `${rest}/cosmwasm/wasm/v1/contract/${contract}/smart/${b64(JSON.stringify(msg))}`,
+    { cache: "no-store" },
+  );
+  if (!res.ok) throw new Error(`smart query HTTP ${res.status}`);
+  return ((await res.json()) as { data: T }).data;
+}
+
+let vaultDiscovery: { value: string | null; fetchedAt: number } | null = null;
+async function discoverHornVault(): Promise<string | null> {
+  const now = Date.now();
+  if (vaultDiscovery && now - vaultDiscovery.fetchedAt < CACHE_TTL_MS) {
+    return vaultDiscovery.value;
+  }
+  let value: string | null = null;
+  try {
+    const lp = await getLaunchpadContract();
+    const cfg = await smartQuery<{ feeshare?: string }>(lp, { horn_config: {} });
+    if (cfg.feeshare && cfg.feeshare.startsWith("ansem1")) {
+      const fs = await smartQuery<{ vault?: string }>(cfg.feeshare, { config: {} });
+      if (fs.vault && fs.vault.startsWith("ansem1")) value = fs.vault;
+    }
+  } catch {
+    value = null;
+  }
+  vaultDiscovery = { value, fetchedAt: Date.now() };
+  return value;
+}
+
+/** Horn Vault contract (ansem-horn-vault, native staking). Resolution order:
+ *  env (NEXT_PUBLIC_HORN_VAULT_ADDRESS) -> reserved registry slot -> live
+ *  on-chain discovery via the launchpad/fee-share horns. Returns null only when
+ *  every source fails, so callers can render the honest preview state. */
 export async function getHornVaultContract(): Promise<string | null> {
   const env = getHornVaultAddress();
   if (env) return env;
   try {
     const slot = (await loadRegistry()).hornVaultContract;
-    return slot && slot.startsWith("ansem1") ? slot : null;
+    if (slot && slot.startsWith("ansem1")) return slot;
   } catch {
-    return null;
+    /* fall through to on-chain discovery */
   }
+  return discoverHornVault();
 }
 
 /** REST endpoint: registry override wins, else the baked anchor. The baked
