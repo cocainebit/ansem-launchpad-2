@@ -37,7 +37,6 @@ export const TOKEN_CATEGORY = "token";
 // the live ansem-1 community-proposal treasury.
 export const PROPOSAL_TREASURY =
   process.env.NEXT_PUBLIC_ANSEM_TREASURY ??
-  process.env.NEXT_PUBLIC_BWICK_TREASURY ??
   "ansem1yhlt4665wr0geu6nej6nddgdn0dp03hxsm807a";
 
 // Chain max_memo_characters (raised to 2048 via governance).

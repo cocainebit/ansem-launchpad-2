@@ -36,7 +36,7 @@ import {
   INDEXER_HTTP,
 } from "@/lib/floorlaunch/config";
 
-type WalletKind = "bwick" | "keplr";
+type WalletKind = "ansem" | "keplr";
 
 interface KeplrLike {
   experimentalSuggestChain: (info: unknown) => Promise<void>;
@@ -54,10 +54,12 @@ interface KeplrLike {
 function providerFor(kind: WalletKind): KeplrLike | null {
   if (typeof window === "undefined") return null;
   const w = window as unknown as {
+    // The ANSEM wallet extension injects its provider under this (legacy-named)
+    // global; it is the extension's real, load-bearing API, never app-facing text.
     bwickWallet?: { cosmos?: KeplrLike };
     keplr?: KeplrLike;
   };
-  if (kind === "bwick") return w.bwickWallet?.cosmos ?? null;
+  if (kind === "ansem") return w.bwickWallet?.cosmos ?? null;
   return w.keplr ?? null;
 }
 
@@ -161,11 +163,11 @@ export function SolanaWalletProvider({ children }: { children: ReactNode }) {
   }, [address]);
 
   const connect = useCallback(
-    async (kind: WalletKind = "bwick") => {
+    async (kind: WalletKind = "ansem") => {
       setConnecting(true);
       try {
         let provider = providerFor(kind);
-        if (!provider) provider = providerFor(kind === "bwick" ? "keplr" : "bwick");
+        if (!provider) provider = providerFor(kind === "ansem" ? "keplr" : "ansem");
         if (!provider) throw new Error("No ANSEM wallet or Keplr detected.");
         try {
           await provider.experimentalSuggestChain(CHAIN_INFO);
@@ -212,15 +214,15 @@ export function SolanaWalletProvider({ children }: { children: ReactNode }) {
   const signSocial = useCallback(
     async (message: string): Promise<SocialSignature> => {
       if (!address) throw new Error("Connect a wallet first.");
-      let kind: WalletKind = "bwick";
+      let kind: WalletKind = "ansem";
       try {
         const raw = window.localStorage.getItem(STORAGE_KEY);
-        if (raw === "bwick" || raw === "keplr") kind = raw;
+        if (raw === "ansem" || raw === "keplr") kind = raw;
       } catch {
         /* ignore */
       }
       let provider = providerFor(kind);
-      if (!provider) provider = providerFor(kind === "bwick" ? "keplr" : "bwick");
+      if (!provider) provider = providerFor(kind === "ansem" ? "keplr" : "ansem");
 
       // Preferred path: the wallet's native ADR-36 signArbitrary (Keplr/Leap).
       if (provider?.signArbitrary) {
@@ -274,7 +276,7 @@ export function SolanaWalletProvider({ children }: { children: ReactNode }) {
     let kind: WalletKind | null = null;
     try {
       const raw = window.localStorage.getItem(STORAGE_KEY);
-      if (raw === "bwick" || raw === "keplr") kind = raw;
+      if (raw === "ansem" || raw === "keplr") kind = raw;
     } catch {
       /* ignore */
     }
@@ -290,7 +292,7 @@ export function SolanaWalletProvider({ children }: { children: ReactNode }) {
     const handler = () => {
       try {
         const raw = window.localStorage.getItem(STORAGE_KEY);
-        if (raw === "bwick" || raw === "keplr") void connect(raw);
+        if (raw === "ansem" || raw === "keplr") void connect(raw);
       } catch {
         /* ignore */
       }
