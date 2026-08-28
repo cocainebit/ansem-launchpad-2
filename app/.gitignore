@@ -41,3 +41,6 @@ yarn-error.log*
 
 
 .agents
+
+# social store
+.data/

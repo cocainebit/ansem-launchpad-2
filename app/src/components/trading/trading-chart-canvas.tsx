@@ -125,7 +125,7 @@ export function TradingChartCanvas({
       // Carry the open forward from the previous candle's close so the series
       // is continuous and each candle forms a real body. Without this, a bucket
       // with a single trade has open===high===low===close and draws as an
-      // invisible flat doji — the chart looked empty even with trades. The
+      // invisible flat doji; the chart looked empty even with trades. The
       // high/low are widened to include the carried open so the body is fully
       // enclosed.
       const open = prevClose ?? rawOpen;

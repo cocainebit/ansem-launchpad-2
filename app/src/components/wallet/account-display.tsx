@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { Check, CopySimple, SignOut, Wallet } from "@phosphor-icons/react";
+import { useRouter } from "next/navigation";
+import { Check, CopySimple, SignOut, UserCircle, Wallet } from "@phosphor-icons/react";
 import { useFloorWallet } from "@/components/wallet/solana-wallet-provider";
 import {
   DropdownMenu,
@@ -36,6 +37,7 @@ export function AccountDisplay({
 } = {}) {
   const { address, balance, ansemBalance, walletName, disconnect } = useFloorWallet();
   const [copied, setCopied] = useState(false);
+  const router = useRouter();
 
   const handleCopyAddress = useCallback(async () => {
     if (address) {
@@ -65,7 +67,7 @@ export function AccountDisplay({
             <>
               <Wallet size={17} weight="fill" className="shrink-0 text-zinc-400" />
               <span className="flex min-w-0 flex-col items-start font-sans text-[12px] font-semibold leading-tight">
-                <span className="truncate">{balance === null ? "—" : formatSol(balance)} CHANSE</span>
+                <span className="truncate">{balance === null ? "-" : formatSol(balance)} CHANSE</span>
                 <span className="truncate text-zinc-400">{ansemBalance ? formatSol(ansemBalance) : "0"} ANSEM</span>
               </span>
             </>
@@ -106,12 +108,27 @@ export function AccountDisplay({
             </div>
           </div>
         </div>
-        <div className="mb-1 flex items-center justify-between rounded-lg bg-[#1a1a1e] px-3 py-2.5 text-xs">
-          <span className="text-zinc-500">SOL balance</span>
-          <span className="font-semibold text-zinc-100">
-            {balance === null ? "—" : `${formatSol(balance)} SOL`}
-          </span>
+        <div className="mb-1 space-y-1.5 rounded-lg bg-[#1a1a1e] px-3 py-2.5 text-xs">
+          <div className="flex items-center justify-between">
+            <span className="text-zinc-500">CHANSE balance</span>
+            <span className="font-semibold text-zinc-100">
+              {balance === null ? "-" : `${formatSol(balance)} CHANSE`}
+            </span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-zinc-500">ANSEM balance</span>
+            <span className="font-semibold text-zinc-100">
+              {ansemBalance ? `${formatSol(ansemBalance)} ANSEM` : "0 ANSEM"}
+            </span>
+          </div>
         </div>
+        <DropdownMenuItem
+          onClick={() => router.push(`/creator/${address}`)}
+          className="h-10 cursor-pointer gap-2 rounded-lg px-3 text-xs text-zinc-300 focus:bg-[#242428] focus:text-white"
+        >
+          <UserCircle size={15} weight="fill" />
+          My account
+        </DropdownMenuItem>
         <DropdownMenuItem
           onClick={handleCopyAddress}
           className="h-10 cursor-pointer gap-2 rounded-lg px-3 text-xs text-zinc-300 focus:bg-[#242428] focus:text-white"

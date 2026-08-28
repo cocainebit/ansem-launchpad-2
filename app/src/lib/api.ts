@@ -280,6 +280,71 @@ export async function fetchTokens(): Promise<TokenListItem[]> {
     .map((t) => toToken(t, solUsd));
 }
 
+// ── real 24h price change (computed from candles) ───────────────────────────
+// The indexer's /tokens payload carries no 24h-open / prev-price field (only
+// current_price, volume_24h, trade_count_24h), so `price_change_24h` cannot be
+// mapped directly and must be derived from the candle history.
+//
+// Method: pull hourly candles spanning >24h, take the latest close as "now",
+// and the reference price as of 24h ago. Because candle buckets are sparse
+// (only buckets that had trades exist), the reference is the close of the last
+// candle at-or-before the 24h cutoff; if the token first traded inside the last
+// 24h there is no such candle, so we fall back to the OPEN of the earliest
+// candle in the window (its first real traded price). Both inputs are real
+// on-chain prices. If we cannot derive two positive prices, we return null so
+// the UI shows "-" rather than a fabricated 0.
+const CHANGE_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+export async function fetchTokenChange24h(
+  tokenAddress: string,
+): Promise<number | null> {
+  try {
+    const { candles } = await fetchCandles(tokenAddress, "1h", 48);
+    if (!candles || candles.length === 0) return null;
+    const sorted = [...candles].sort(
+      (a, b) => Date.parse(a.time) - Date.parse(b.time),
+    );
+    const cutoff = Date.now() - CHANGE_WINDOW_MS;
+    // Reference = the last known close at or before the 24h cutoff.
+    let ref: number | null = null;
+    for (const c of sorted) {
+      if (Date.parse(c.time) <= cutoff) ref = Number(c.close);
+    }
+    // Nothing before the cutoff -> token first traded inside the window; use the
+    // earliest candle's opening price as the honest baseline.
+    if (ref == null) ref = Number(sorted[0].open);
+    const latest = Number(sorted[sorted.length - 1].close);
+    if (
+      !Number.isFinite(ref) ||
+      !Number.isFinite(latest) ||
+      ref <= 0 ||
+      latest <= 0
+    ) {
+      return null;
+    }
+    return ((latest - ref) / ref) * 100;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Batch-compute 24h change for a set of token addresses, in parallel. Each
+ * address maps to a percentage or null (no derivable history). Intended to be
+ * called with only the addresses that actually traded in the last 24h, so we
+ * never fire a candle request for dead listings.
+ */
+export async function fetchTokenChanges(
+  addresses: string[],
+): Promise<Record<string, number | null>> {
+  const entries = await Promise.all(
+    addresses.map(
+      async (address) => [address, await fetchTokenChange24h(address)] as const,
+    ),
+  );
+  return Object.fromEntries(entries);
+}
+
 // The launchpad's real graduation threshold (uchanse micro-units). One cached
 // read powers every feed progress bar so it shows true curve fill toward the
 // AMM, not the unpopulated per-token target. Chain-agnostic: reads live config,
@@ -308,8 +373,8 @@ export async function fetchToken(address: string): Promise<TokenListItem> {
   // The indexer's current_price / ansem_reserves only update once a trade is
   // indexed, so a freshly launched (still-on-curve) token read $0 price / MC /
   // liquidity. For an on-curve token, overlay the LIVE curve state from the
-  // launchpad contract — it has the correct marginal price and reserves from
-  // block one — so the header shows the real starting MC (~$10k) immediately.
+  // launchpad contract, which has the correct marginal price and reserves from
+  // block one, so the header shows the real starting MC (~$10k) immediately.
   let poolValueBase: number | null = null;
   if (!t.graduated) {
     try {
@@ -345,7 +410,7 @@ export async function fetchToken(address: string): Promise<TokenListItem> {
   return token;
 }
 
-// Legacy collectible aggregators — no equivalent on a plain launchpad.
+// Legacy collectible aggregators: no equivalent on a plain launchpad.
 export const fetchMarkets = async (): Promise<MarketInfo[]> =>
   (await fetchTokens()).map((t) => t.market);
 export const fetchAggregator = async (): Promise<AggregatorRow[]> => [];
@@ -383,7 +448,7 @@ export async function fetchCandles(
   limit = 300,
 ): Promise<CandleResponse> {
   // Our /candles already returns { token_address, timeframe, candles:[{time(ISO),
-  // open/high/low/close/volume(strings), trade_count}] } — pass through.
+  // open/high/low/close/volume(strings), trade_count}] } pass through.
   const data = await request<CandleResponse>(
     `/candles/${tokenAddress}?timeframe=${TF_TO_INDEXER[timeframe]}&limit=${limit}`,
   );

@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { Geist } from "next/font/google";
 import { Providers } from "@/components/providers";
+import { TileFieldBackground } from "@/components/layout/tile-field-bg";
 import "./globals.css";
 
-// Single typeface across the app — body, display AND numerics all Geist.
+// Single typeface across the app: body, display and numerics all Geist.
 const geist = Geist({
   subsets: ["latin"],
   variable: "--font-geist",
@@ -46,6 +47,7 @@ export default function RootLayout({
       className={`dark ${geist.variable}`}
     >
       <body className="antialiased">
+        <TileFieldBackground />
         <div className="relative z-10">
           <Providers>{children}</Providers>
         </div>

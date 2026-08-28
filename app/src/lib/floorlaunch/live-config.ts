@@ -1,7 +1,7 @@
 // Runtime config-registry resolver.
 //
 // Launch-day model: only TWO things are baked into the build and both are
-// genesis-stable — the config-registry ADDRESS and the REST endpoint. Every
+// genesis-stable: the config-registry ADDRESS and the REST endpoint. Every
 // mutable address (launchpad / amm / oracle / names contracts, the ANSEM SPL
 // mint, and optional RPC/REST overrides) is read LIVE from the registry at
 // runtime. On a fresh genesis the developer changes nothing: the pinned
@@ -17,6 +17,7 @@ import {
   AMM_CONTRACT as ENV_AMM,
   ORACLE_CONTRACT as ENV_ORACLE,
   RPC_URL as ENV_RPC,
+  getHornVaultAddress,
 } from "./config";
 
 // The ONE mutable-address anchor baked at build time. Default = the current
@@ -39,6 +40,9 @@ export interface RegistryConfig {
   solanaRpcUrlOverride: string;
   ansemRpcUrlOverride: string;
   ansemRestUrlOverride: string;
+  /** Reserved slot for the Horn Vault (ansem-horn-vault). Empty until deployed
+   *  and wired into the registry; env stays the primary source meanwhile. */
+  hornVaultContract: string;
 }
 
 const CACHE_TTL_MS = 60_000;
@@ -75,6 +79,7 @@ async function fetchRegistry(): Promise<RegistryConfig> {
     solanaRpcUrlOverride: String(d.solana_rpc_url_override ?? ""),
     ansemRpcUrlOverride: String(d.ansem_rpc_url_override ?? ""),
     ansemRestUrlOverride: String(d.ansem_rest_url_override ?? ""),
+    hornVaultContract: String(d.horn_vault_contract ?? ""),
   };
 }
 
@@ -100,7 +105,7 @@ function pick(resolved: string, fallback: string): string {
   return resolved && resolved.startsWith("ansem1") ? resolved : fallback;
 }
 
-/** Launchpad contract — registry first, baked env as last-resort fallback. */
+/** Launchpad contract: registry first, baked env as last-resort fallback. */
 export async function getLaunchpadContract(): Promise<string> {
   try {
     return pick((await loadRegistry()).launchpadContract, ENV_LAUNCHPAD);
@@ -124,6 +129,21 @@ export async function getOracleContract(): Promise<string> {
     return pick((await loadRegistry()).oracleContract, ENV_ORACLE);
   } catch {
     return ENV_ORACLE;
+  }
+}
+
+/** Horn Vault contract (ansem-horn-vault, native staking). Env is PRIMARY (the
+ *  contract is not deployed yet); a reserved registry slot is the secondary
+ *  source. Returns null when neither is set, so callers render the honest
+ *  preview state instead of live data. */
+export async function getHornVaultContract(): Promise<string | null> {
+  const env = getHornVaultAddress();
+  if (env) return env;
+  try {
+    const slot = (await loadRegistry()).hornVaultContract;
+    return slot && slot.startsWith("ansem1") ? slot : null;
+  } catch {
+    return null;
   }
 }
 

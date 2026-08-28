@@ -1,73 +1,54 @@
 "use client";
 
-import { Sidebar } from "@/components/layout/sidebar";
-import { AnimatedBackground } from "@/components/layout/animated-background";
-import { SidebarProvider, useSidebar } from "@/components/layout/sidebar-context";
-import { TokenSearch } from "@/components/layout/token-search";
-import { ConnectButton } from "@/components/wallet/connect-button";
 import { usePathname } from "next/navigation";
+import { TopNav } from "@/components/utoken/top-nav";
+import { CommandSearchProvider } from "@/components/utoken/command-search";
 
 interface AppShellProps {
   children: React.ReactNode;
 }
 
-function ShellInner({ children }: AppShellProps) {
-  const { isCollapsed, toggle } = useSidebar();
+export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
   const isTerminal = pathname.startsWith("/token/");
-  const leftPad = isCollapsed ? "md:pl-[64px]" : "md:pl-[212px]";
-  const leftEdge = isCollapsed ? "md:left-[64px]" : "md:left-[212px]";
+  const isCreate = pathname.startsWith("/create");
+  // These routes manage their own full-bleed layout (no max-width container, no
+  // extra padding) and hide the footer, so the create wizard never scrolls.
+  const bare = isTerminal || isCreate;
+  const hideFooter = bare;
 
   return (
-    <div className="relative min-h-screen bg-[#0a0a0b] text-zinc-100">
-      <AnimatedBackground />
-      <Sidebar isCollapsed={isCollapsed} onToggle={toggle} />
-
-      {/* Persistent top bar (pew: centered search + Connect) */}
-      <header
-        className={`fixed right-0 top-0 z-20 flex h-14 items-center gap-3 border-b border-[#1a1a1e] bg-[#0a0a0b]/85 px-4 backdrop-blur-md transition-[left] duration-200 ${leftEdge} left-0`}
-      >
-        <div className="flex flex-1 justify-center">
-          <TokenSearch />
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {isTerminal && (
-            <a
-              href="/create"
-              className="hidden h-9 items-center rounded-[4px] bg-white px-4 font-display text-[12px] font-bold text-[#0a0a0b] transition-opacity hover:opacity-85 sm:flex"
-            >
-              CREATE
-            </a>
+    <CommandSearchProvider>
+      <div className="flex min-h-screen flex-col text-zinc-100">
+        <TopNav />
+        <main className={`flex-1 ${isTerminal ? "bg-[#0d0d0f]" : ""}`}>
+          {bare ? (
+            children
+          ) : (
+            <div className="mx-auto max-w-[1440px] px-4 py-8 sm:px-6">{children}</div>
           )}
-          <ConnectButton
-            label="Connect"
-            balanceOnly
-            className="h-9 rounded-full border border-[#26262b] bg-transparent px-4 text-sm font-semibold text-zinc-200 transition-colors hover:border-[#3a3a42] hover:text-white"
-            connectedClassName="h-9 w-auto rounded-full px-3"
-          />
-        </div>
-      </header>
-
-      <main className={`relative z-10 min-h-screen transition-[padding-left] duration-200 ease-in-out ${leftPad}`}>
-        <div
-          className={
-            "w-full " +
-            (isTerminal
-              ? "px-0 pt-14"
-              : "px-4 pb-6 pt-[72px] sm:px-6 lg:px-8 lg:pb-8")
-          }
-        >
-          {children}
-        </div>
-      </main>
-    </div>
+        </main>
+        {!hideFooter && <SiteFooter />}
+      </div>
+    </CommandSearchProvider>
   );
 }
 
-export function AppShell({ children }: AppShellProps) {
+function SiteFooter() {
   return (
-    <SidebarProvider>
-      <ShellInner>{children}</ShellInner>
-    </SidebarProvider>
+    <footer className="relative z-10 border-t border-[var(--hairline)] bg-[#161616]">
+      <div className="mx-auto flex max-w-[1440px] flex-col items-center gap-x-6 gap-y-3 px-4 py-7 text-[13px] text-zinc-500 sm:flex-row sm:flex-wrap sm:px-6">
+        <span className="flex items-center gap-2 text-zinc-300">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="" className="h-5 w-5 rounded-[5px] object-cover" />
+          ansemchain
+        </span>
+        <a href="/explore" className="hover:text-white">Scanner</a>
+        <a href="/leaderboard" className="hover:text-white">Leaderboard</a>
+        <a href="/horns" className="hover:text-white">Horns</a>
+        <a href="/create" className="hover:text-white">Launch</a>
+        <span className="text-zinc-600 sm:ml-auto">© 2026 ansemchain · coins that pay their holders</span>
+      </div>
+    </footer>
   );
 }

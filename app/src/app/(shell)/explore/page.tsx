@@ -1,9 +1,7 @@
-import { TokenExplorer } from "@/components/feed/token-explorer";
+"use client";
+
+import { Scanner } from "@/components/utoken/scanner";
 
 export default function ExplorePage() {
-  return (
-    <div className="mx-auto w-full max-w-[1200px] py-2 sm:py-6">
-      <TokenExplorer />
-    </div>
-  );
+  return <Scanner />;
 }

@@ -71,11 +71,23 @@ export const ORACLE_CONTRACT =
   process.env.NEXT_PUBLIC_ANSEM_ORACLE ??
   "ansem1d2wr6ej95xepd3wmmpgrkyxwjns6gt5tfscrr3jcuetz7m7z0req0u7slp";
 
+// ── Horn Vault (ansem-horn-vault) ───────────────────────────────────────────
+// The staking vault contract. NOT yet deployed, so its address is supplied via
+// env at build/runtime (NEXT_PUBLIC_HORN_VAULT_ADDRESS) and is the PRIMARY
+// source. When unset (or malformed) this returns null and the vault page falls
+// back to its honest preview state instead of showing live data. Once the
+// contract deploys, a reserved registry slot can back it too (see
+// getHornVaultContract in live-config.ts), but env wins until then.
+export function getHornVaultAddress(): string | null {
+  const addr = (process.env.NEXT_PUBLIC_HORN_VAULT_ADDRESS ?? "").trim();
+  return addr.startsWith("ansem1") ? addr : null;
+}
+
 export const IS_LOCALNET =
   RPC_URL.includes("127.0.0.1") || RPC_URL.includes("localhost");
 export const IS_DEVNET = false;
 
-// Tokens hidden from every listing + search FOR NOW — a pre-launch cleanup so
+// Tokens hidden from every listing + search FOR NOW, a pre-launch cleanup so
 // the rehearsal/test tokens don't show. Detail pages (/token/<addr>) still
 // resolve, so these stay reachable by direct link for testing. To show
 // everything again at launch, empty this set.

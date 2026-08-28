@@ -45,7 +45,7 @@ export function WelcomeModal() {
           <div>
             <h3 className="mb-1 font-semibold text-zinc-900">How it works</h3>
             <p>
-              Every token launches on a bonding curve — price starts low and rises as people buy.
+              Every token launches on a bonding curve: price starts low and rises as people buy.
               Once the reserve hits the graduation threshold, liquidity auto-migrates to the AMM
               pool for open trading.
             </p>
@@ -67,14 +67,14 @@ export function WelcomeModal() {
               </div>
             </div>
             <p className="text-xs text-zinc-500 mt-2">
-              Low entry cost, higher exit cost — aligned with builders who stay, not extractors who flip.
+              Low entry cost, higher exit cost, aligned with builders who stay, not extractors who flip.
             </p>
           </div>
 
           <div>
             <h3 className="mb-1 font-semibold text-zinc-900">Limited tickers, limited supply</h3>
             <p>
-              Every token has a fixed supply on its bonding curve — no unlimited minting, no hidden inflation.
+              Every token has a fixed supply on its bonding curve: no unlimited minting, no hidden inflation.
               Wallets are capped at 3% of total supply, so no single buyer can hog the curve.
               Tickers and names are locked with an 8-hour cooldown after each launch, so nobody can
               squat or spam the same idea. Combined with a creation fee, this keeps launches intentional

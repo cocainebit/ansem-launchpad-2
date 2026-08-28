@@ -98,7 +98,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
           ))}
         </div>
 
-        {/* CREATE box — pew's bordered create control */}
+        {/* CREATE box: pew's bordered create control */}
         <Link
           href="/create"
           className={

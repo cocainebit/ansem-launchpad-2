@@ -103,7 +103,7 @@ export function TokenFeed() {
                 <RankedCoin key={token.address} token={token} rank={i + 1} />
               ))}
           {!isLoading && rankedByCap.length === 0 && (
-            <EmptyRail>No coins launched yet — be the first.</EmptyRail>
+            <EmptyRail>No coins launched yet. Be the first.</EmptyRail>
           )}
         </div>
       </section>
@@ -200,7 +200,7 @@ export function TokenFeed() {
 
 /* ---------- promo banner (above COINS) ---------- */
 
-// Image banner slot with a FIXED 1194:315 aspect ratio — it scales
+// Image banner slot with a FIXED 1194:315 aspect ratio; it scales
 // proportionally with the content width (never a fixed pixel height). Because
 // the ratio is locked and the art matches it, object-cover fills without
 // cropping. Build artwork at 1194 x 315 (export @2x = 2388 x 630). Drop the file
@@ -235,7 +235,7 @@ function HornsPromoBanner() {
           <p className="font-mono text-[12px] text-zinc-500">
             drop artwork at <span className="text-zinc-300">public/promo-banner.png</span>
           </p>
-          <p className="font-mono text-[11px] text-zinc-600">ratio 1194 : 315 — art @2x: 2388 × 630</p>
+          <p className="font-mono text-[11px] text-zinc-600">ratio 1194 : 315, art @2x: 2388 × 630</p>
         </div>
       )}
     </Link>

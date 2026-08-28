@@ -86,37 +86,41 @@
   --sidebar-border: #d4d4d8;
   --sidebar-ring: #6cf07f;
 
-  /* ANSEM/Horns accent tokens (single accent, used sparingly like pew's green) */
-  --ansem: #6cf07f;
-  --ansem-dim: #2f7d3f;
+  /* utoken.so palette: purple accent on a #161616 dark base. */
+  --ansem: #6cf07f; /* accent (purple) */
+  --ansem-dim: #7a3a9c;
   --up: #4ade80;
   --down: #ff5b5b;
-  --surface-0: #0a0a0b; /* page */
-  --surface-1: #0e0e10; /* raised card */
-  --surface-2: #131316; /* elevated */
-  --surface-3: #1a1a1e; /* controls */
-  --hairline: #1e1e22;
-  --hairline-strong: #2a2a30;
+  --surface-0: #161616; /* page */
+  --surface-1: #1c1c1e; /* raised card */
+  --surface-2: #202022; /* elevated */
+  --surface-3: #26262a; /* controls */
+  --hairline: #2a2a2c;
+  --hairline-strong: #35353a;
+
+  /* Ink for the ported utoken tile-field backdrop, adapted to ANSEM green
+     (108 240 127) from utoken's original 80 245 137. */
+  --hero-ink: 108 240 127;
 }
 
 .dark {
-  --background: #0a0a0b;
+  --background: #161616;
   --foreground: #fafafa;
-  --card: #0e0e10;
+  --card: #1c1c1e;
   --card-foreground: #fafafa;
-  --popover: #0e0e10;
+  --popover: #1c1c1e;
   --popover-foreground: #fafafa;
-  --primary: #ffffff;
+  --primary: #6cf07f;
   --primary-foreground: #0a0a0b;
   --secondary: #131316;
   --secondary-foreground: #f4f4f5;
   --muted: #131316;
   --muted-foreground: #71717a;
-  --accent: #1a1a1e;
+  --accent: #232326;
   --accent-foreground: #f4f4f5;
   --destructive: #ff5b5b;
-  --border: #1e1e22;
-  --input: #131316;
+  --border: #2a2a2c;
+  --input: #202022;
   --ring: #6cf07f;
   --chart-1: #6cf07f;
   --chart-2: #71717a;
@@ -136,33 +140,123 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
-    scrollbar-width: thin;
-    scrollbar-color: #26262b transparent;
+    /* Seamless scrolling everywhere: no visible scroll component. */
+    scrollbar-width: none;
   }
 
   *::-webkit-scrollbar {
-    width: 8px;
-    height: 8px;
+    width: 0;
+    height: 0;
+    display: none;
   }
 
-  *::-webkit-scrollbar-track {
-    background: transparent;
-  }
-
-  *::-webkit-scrollbar-button {
+  /* Opt-in: fully hide the scrollbar (horizontal carousels) while keeping scroll. */
+  .no-scrollbar::-webkit-scrollbar {
     display: none;
     width: 0;
     height: 0;
   }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
 
-  *::-webkit-scrollbar-thumb {
-    background: #26262b;
-    border-radius: 999px;
+  /* Hero carousel: time-decay pager fill + slide fade-in. */
+  @keyframes ansem-hero-fill {
+    from {
+      width: 0%;
+    }
+    to {
+      width: 100%;
+    }
+  }
+  .ansem-hero-fill {
+    width: 0%;
+    animation-name: ansem-hero-fill;
+    animation-timing-function: linear;
+    animation-fill-mode: forwards;
+  }
+  @keyframes ansem-hero-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .ansem-hero-slide {
+    animation: ansem-hero-in 0.45s ease-out both;
+  }
+
+  /* Reusable content transition for toggles/tabs (key the element to replay). */
+  @keyframes ansem-fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+  .ansem-fade-in {
+    animation: ansem-fade-in 0.28s ease-out both;
+  }
+
+  /* Horns explorer: animate the detail panel swapping between Horns. */
+  @keyframes horn-swap {
+    from {
+      opacity: 0;
+      transform: translateY(10px) scale(0.985);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+  .horn-swap {
+    animation: horn-swap 0.34s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .horn-swap {
+      animation: none;
+    }
+  }
+
+  /* Featured coins: continuous horizontal marquee, pauses on hover. */
+  @keyframes ansem-featured-scroll {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-50%);
+    }
+  }
+  .ansem-featured-marquee {
+    animation: ansem-featured-scroll 40s linear infinite;
+    animation-direction: reverse;
+    will-change: transform;
+  }
+  .ansem-featured-marquee:hover {
+    animation-play-state: paused;
   }
 
   body {
     @apply text-foreground font-sans;
-    background-color: #0a0a0b;
+    background-color: #161616;
+  }
+
+  /* Ported utoken tile-field backdrop (see TileFieldBackground). Fixed behind
+     all content, never intercepts pointer events. */
+  .ansem-tilefield {
+    background-color: #161616;
+  }
+  .ansem-tilefield-canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
   }
 
   /* Subtle animated green backdrop (see AnimatedBackground). */
@@ -213,6 +307,23 @@
   }
   @media (prefers-reduced-motion: reduce) {
     .ansem-bg-blob { animation: none; }
+  }
+
+  /* Price-ticker marquee (utoken spec §3): content is duplicated, so a -50%
+     translate loops seamlessly. Pauses on hover; respects reduced-motion. */
+  @keyframes ansem-marquee {
+    from { transform: translateX(0); }
+    to { transform: translateX(-50%); }
+  }
+  .ansem-marquee {
+    display: flex;
+    width: max-content;
+    animation: ansem-marquee 60s linear infinite;
+    animation-direction: reverse;
+  }
+  .ansem-marquee:hover { animation-play-state: paused; }
+  @media (prefers-reduced-motion: reduce) {
+    .ansem-marquee { animation: none; }
   }
 
   /* Range slider used in the Horns launch step */

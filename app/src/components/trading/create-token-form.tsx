@@ -7,6 +7,23 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useFloorWallet } from "@/components/wallet/solana-wallet-provider";
 import { createToken } from "@/lib/ansem/launchpad-tx";
+import { HORNS } from "@/lib/horns-catalog";
+
+// Extra Horns a creator can compose onto their pool. The reward skim (Vault /
+// Fee-Share) is the base and always implied; the Composite router itself and the
+// hook interface are not user-selectable. A dot marks Horns that need extra
+// config or funding to actually do anything.
+// Excludes the base reward Horns (vault/feeshare), the router itself, the
+// interface, and limit/twamm, which are a standalone router and a keeper, not
+// pool hooks (per the attach-path audit).
+const COMPOSABLE_HORNS = HORNS.filter(
+  (h) => !["vault", "feeshare", "composite", "_hooks-interface", "limit", "twamm"].includes(h.slug),
+);
+const HORN_NEEDS_CONFIG = new Set(["rehypo", "arb", "floor", "auction"]);
+// Stateful Horns that must run alone (not composed): their after_swap invariants
+// (budget, rent) are unsafe to stack. Selecting one is exclusive; picking a
+// stackable Horn clears it, and vice versa.
+const HORN_SOLO = new Set(["arb", "auction"]);
 import { BASE_DENOMS } from "@/lib/floorlaunch/config";
 
 type BaseChoice = "chanse" | "ansem";
@@ -56,6 +73,7 @@ export function CreateTokenForm() {
   const [attachHorns, setAttachHorns] = useState(true);
   const [skimPct, setSkimPct] = useState(3); // % of each swap fee -> Horn Vault (0..10)
   const [ansemPct, setAnsemPct] = useState(50); // share of the skim to the ANSEM sink
+  const [composite, setComposite] = useState<string[]>([]); // extra Horns via the Composite router
 
   const handleFile = useCallback(async (file: File | null | undefined) => {
     if (!file) return;
@@ -109,7 +127,7 @@ export function CreateTokenForm() {
             ? String(Math.round(Number(gradAnsem) * 1_000_000))
             : undefined,
         horn: attachHorns
-          ? { skimBps: Math.round(skimPct * 100), ansemBps: Math.round(ansemPct * 100) }
+          ? { skimBps: Math.round(skimPct * 100), ansemBps: Math.round(ansemPct * 100), composite }
           : undefined,
       });
       toast.success("Token launched", {
@@ -180,7 +198,7 @@ export function CreateTokenForm() {
           )}
           <div className="min-w-0 text-[13px]">
             <p className="font-medium text-zinc-200">
-              {imgBusy ? "Processing…" : image ? "Image ready — click to replace" : "Drag & drop or click to upload"}
+              {imgBusy ? "Processing…" : image ? "Image ready, click to replace" : "Drag & drop or click to upload"}
             </p>
             <p className="mt-0.5 text-[12px] text-zinc-500">PNG, JPG or GIF. Downscaled to 256px and stored with the token.</p>
           </div>
@@ -223,7 +241,7 @@ export function CreateTokenForm() {
         onClick={() => setStep(2)}
         className="btn-white mt-1 h-12 rounded-[6px] font-display text-[13px] uppercase tracking-[0.1em] disabled:opacity-40"
       >
-        Next — launch settings
+        Next: launch settings
       </button>
         </>
       ) : (
@@ -265,7 +283,7 @@ export function CreateTokenForm() {
             inputMode="decimal"
           />
           <p className="mt-2 text-[12px] text-zinc-500">
-            ANSEM launches bypass the CHANSE/USD oracle — set how much ANSEM the curve
+            ANSEM launches bypass the CHANSE/USD oracle. Set how much ANSEM the curve
             raises before graduating to the AMM.
           </p>
         </div>
@@ -339,15 +357,65 @@ export function CreateTokenForm() {
               />
             </div>
 
+            {/* Composite: extra Horns run alongside the reward skim */}
+            <div>
+              <div className="flex items-center justify-between text-[12px]">
+                <span className="text-zinc-400">Compose extra Horns</span>
+                <span className="mono text-zinc-500">{composite.length} selected</span>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {COMPOSABLE_HORNS.map((h) => {
+                  const on = composite.includes(h.slug);
+                  return (
+                    <button
+                      key={h.slug}
+                      type="button"
+                      title={h.tagline}
+                      onClick={() =>
+                        setComposite((c) => {
+                          if (c.includes(h.slug)) return c.filter((s) => s !== h.slug);
+                          if (HORN_SOLO.has(h.slug)) return [h.slug]; // solo: exclusive
+                          return [...c.filter((s) => !HORN_SOLO.has(s)), h.slug];
+                        })
+                      }
+                      className={`inline-flex items-center gap-1.5 rounded-[6px] border px-2 py-1 text-[11px] transition-colors ${
+                        on
+                          ? "border-[#6cf07f] bg-[#6cf07f]/10 text-[#9ff5ae]"
+                          : "border-[#26262b] bg-[#131316] text-zinc-400 hover:text-zinc-200"
+                      }`}
+                    >
+                      {h.name}
+                      {HORN_SOLO.has(h.slug) && (
+                        <span className="rounded-[3px] bg-[#2a2a2c] px-1 py-0.5 font-mono text-[8px] uppercase tracking-wide text-zinc-500">
+                          solo
+                        </span>
+                      )}
+                      {HORN_NEEDS_CONFIG.has(h.slug) && (
+                        <span
+                          title="Needs extra config or funding to do anything"
+                          className="h-1.5 w-1.5 rounded-full bg-[#e0b341]"
+                        />
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-[11px] leading-4 text-zinc-600">
+                {composite.length > 0
+                  ? `${composite.length === 1 ? "1 extra Horn" : `${composite.length} extra Horns`} attach with the reward skim through the Composite router. A dot marks Horns that need extra config or funding.`
+                  : "Optional. Add pricing, fee, or liquidity Horns to run alongside the reward skim. Two or more Horns run through the Composite router."}
+              </p>
+            </div>
+
             <p className="text-[11px] leading-4 text-zinc-600">
               When your coin graduates to the AMM, {skimPct}% of every swap fee ({skimBps} bps
               of the fee) is skimmed to the Horn Vault and split to ANSEM / CHANSE stakers.
-              Horns is in preview — this activates with the Horns program.
+              Horns is in preview; this activates with the Horns program.
             </p>
           </div>
         ) : (
           <p className="mt-3 text-[12px] text-zinc-500">
-            No Horn attached — all swap fees stay with the pool. You can still launch;
+            No Horn attached. All swap fees stay with the pool. You can still launch;
             Horns can only be set at launch.
           </p>
         )}

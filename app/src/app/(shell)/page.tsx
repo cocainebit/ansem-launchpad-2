@@ -1,11 +1,7 @@
 "use client";
 
-import { TokenFeed } from "@/components/feed/token-feed";
+import { UtokenHome } from "@/components/utoken/home";
 
 export default function HomePage() {
-  return (
-    <div className="w-full">
-      <TokenFeed />
-    </div>
-  );
+  return <UtokenHome />;
 }

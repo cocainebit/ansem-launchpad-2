@@ -50,8 +50,13 @@ export interface CreateTokenArgs {
    * stakers; `ansemBps` = share of that skim routed to the ANSEM sink (rest to
    * CHANSE). Only sent when a Horn is attached; the field is ignored by a
    * launchpad that predates Horns, so existing launches are unaffected.
+   *
+   * `composite` = extra Horns (by slug) to attach alongside the reward skim via
+   * the Composite router. Forwarded as `composite_horns`; a launchpad that
+   * predates hook composition ignores the unknown field (cw_serde default), so
+   * this is a forward-compatible preview until the Horns program wires in.
    */
-  horn?: { skimBps: number; ansemBps: number };
+  horn?: { skimBps: number; ansemBps: number; composite?: string[] };
 }
 
 export async function createToken(
@@ -71,7 +76,15 @@ export async function createToken(
         ? { base_grad_threshold: args.baseGradThreshold }
         : {}),
       ...(args.horn
-        ? { horn: { skim_bps: args.horn.skimBps, ansem_bps: args.horn.ansemBps } }
+        ? {
+            horn: {
+              skim_bps: args.horn.skimBps,
+              ansem_bps: args.horn.ansemBps,
+              ...(args.horn.composite && args.horn.composite.length
+                ? { composite_horns: args.horn.composite }
+                : {}),
+            },
+          }
         : {}),
     },
   };

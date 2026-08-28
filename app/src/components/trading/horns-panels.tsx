@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Horse, Lightning } from "@phosphor-icons/react";
+import Link from "next/link";
+import { Lightning } from "@phosphor-icons/react";
 import type { TokenListItem } from "@/lib/api";
 
 /**
@@ -10,9 +11,9 @@ import type { TokenListItem } from "@/lib/api";
  * IMPORTANT: the Horns program + Horn Vault are deployed on localnet but are NOT
  * yet wired to the live indexer, so these panels must NOT show live-looking
  * numbers (APR, TVL, pending rewards, per-pool skim). They render as a clearly
- * marked PREVIEW that explains the mechanic; every figure stays "—" until real
+ * marked PREVIEW that explains the mechanic; every figure stays "-" until real
  * addresses + a read path are handed over. Flip HORNS_LIVE (and fill the
- * addresses) to switch them to live reads — the query/exec shapes below mirror
+ * addresses) to switch them to live reads; the query/exec shapes below mirror
  * the contracts 1:1:
  *
  *   Launchpad query  HornConfig{}                 -> { feeshare, skim_bps, ansem_bps }
@@ -39,18 +40,17 @@ function denomLabel(denom: string): string {
   return DENOM_LABEL[denom] ?? denom.replace(/^u/, "").toUpperCase();
 }
 
-const DASH = "—";
+const DASH = "-";
 
 /* ---------------- What Horns are (explainer + fee mechanic) ---------------- */
 
 export function HornsFeeSplitPanel({ token: _token }: { token: TokenListItem }) {
+  // Per-pool horn attachment is not live yet, so pool params render honestly.
+  const attached = false;
   return (
-    <section className="rounded-xl border border-[#1e1e22] bg-[#0e0e10]/80 p-4">
+    <section className="flex flex-col rounded-xl bg-[#17171a] p-4">
       <div className="flex items-center justify-between">
-        <h3 className="flex items-center gap-1.5 font-display text-[13px] font-semibold uppercase tracking-[0.12em] text-zinc-100">
-          <Horse size={15} weight="fill" className="text-[#6cf07f]" />
-          Horns
-        </h3>
+        <h3 className="font-display text-[15px] font-semibold text-zinc-100">Horns</h3>
         <span className="rounded-[4px] border border-[#26262b] px-2 py-0.5 font-mono text-[10px] text-zinc-500">
           {HORNS_LIVE ? "live" : "preview"}
         </span>
@@ -64,20 +64,63 @@ export function HornsFeeSplitPanel({ token: _token }: { token: TokenListItem }) 
         at launch. Stakers of either token earn a real cut of the pool&apos;s trading.
       </p>
 
-      {/* Illustrative flow — clearly not per-pool live data. */}
+      {/* Illustrative flow, clearly not per-pool live data. */}
       <div className="mt-3 rounded-lg border border-[#1a1a1e] bg-[#0a0a0b] p-3">
-        <FlowRow tone="#6cf07f" label="Swap fee" value="100%" sub="charged on every trade" />
+        <FlowRow tone="#6cf07f" label="Swap fee" value="pool rate" sub="charged on every trade" />
         <div className="my-1.5 ml-[3px] h-3 w-px bg-[#26262b]" />
         <FlowRow tone="#6cf07f" label="Skim to Horns" value="creator-set" sub="a % of the fee" />
         <FlowRow tone="#8ab4ff" label="→ ANSEM + CHANSE sinks" value="split" sub="to Vault stakers" />
       </div>
 
-      <p className="mt-2 text-[10px] leading-4 text-zinc-600">
+      {/* This pool: the real per-pool params, "-" / None until wired. */}
+      <div className="mt-3">
+        <p className="mb-1.5 text-[10px] uppercase tracking-[0.14em] text-zinc-600">This pool</p>
+        <div className="space-y-1.5 rounded-lg border border-[#1a1a1e] bg-[#0a0a0b] p-3">
+          <PoolRow label="Attached Horn" value={attached ? DASH : "None"} />
+          <PoolRow label="Skim to Vault" value={DASH} />
+          <PoolRow label="ANSEM / CHANSE split" value={DASH} />
+        </div>
+      </div>
+
+      {/* What creators + holders get out of it. */}
+      <p className="mt-3 text-[12px] leading-[17px] text-zinc-400">
+        A creator can bolt on Horns like <span className="text-zinc-200">Fee Decay</span>,{" "}
+        <span className="text-zinc-200">Dynamic Fee</span> or <span className="text-zinc-200">Oracle Arb</span>{" "}
+        at graduation to reshape how the pool prices and pays. Stakers earn the skim from every graduated
+        pool through the Vault.
+      </p>
+
+      {/* Genuinely useful links, and they fill the panel. */}
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        <Link
+          href="/horns"
+          className="flex items-center justify-center rounded-lg border border-[#26262b] bg-[#101012] px-3 py-2 font-display text-[12px] font-semibold text-zinc-200 transition-colors hover:border-[#3a3a42] hover:text-white"
+        >
+          Explore Horns →
+        </Link>
+        <Link
+          href="/vault"
+          className="flex items-center justify-center rounded-lg border border-[#26262b] bg-[#101012] px-3 py-2 font-display text-[12px] font-semibold text-zinc-200 transition-colors hover:border-[#3a3a42] hover:text-white"
+        >
+          Horn Vault →
+        </Link>
+      </div>
+
+      <p className="mt-3 text-[10px] leading-4 text-zinc-600">
         {HORNS_LIVE
           ? "Live skim + split for this pool shown above."
-          : "Preview — this pool's live skim and split appear once the Horns program is wired to the indexer."}
+          : "Preview: this pool's live skim and split appear once the Horns program is wired to the indexer."}
       </p>
     </section>
+  );
+}
+
+function PoolRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center justify-between">
+      <span className="text-[12px] text-zinc-500">{label}</span>
+      <span className="mono text-[12px] font-semibold text-zinc-300">{value}</span>
+    </div>
   );
 }
 
@@ -118,12 +161,12 @@ export function HornVaultPanel({ token: _token }: { token: TokenListItem }) {
 
   const label = denomLabel(denom);
   const live = HORNS_LIVE;
-  // Until a live read path exists, every figure is a dash — never a fake number.
+  // Until a live read path exists, every figure is a dash, never a fake number.
   const rewards: Coin[] = [];
   const hasRewards = rewards.length > 0;
 
   return (
-    <section className="rounded-xl border border-[#1e1e22] bg-[#0e0e10]/80 p-4">
+    <section className="rounded-xl bg-[#17171a] p-4">
       <div className="flex items-center justify-between">
         <h3 className="flex items-center gap-1.5 font-display text-[13px] font-semibold uppercase tracking-[0.12em] text-zinc-100">
           <Lightning size={15} weight="fill" className="text-[#6cf07f]" />
@@ -134,7 +177,7 @@ export function HornVaultPanel({ token: _token }: { token: TokenListItem }) {
         </span>
       </div>
 
-      {/* Sink stats for the selected denom — dashes until wired. */}
+      {/* Sink stats for the selected denom: dashes until wired. */}
       <div className="mt-3 grid grid-cols-3 gap-px overflow-hidden rounded-lg border border-[#1a1a1e] bg-[#1a1a1e]">
         <VaultStat label="APR" value={DASH} accent />
         <VaultStat label="Sink TVL" value={DASH} />
@@ -232,7 +275,7 @@ export function HornVaultPanel({ token: _token }: { token: TokenListItem }) {
       <p className="mt-2 text-[10px] leading-4 text-zinc-600">
         {live
           ? "Stake ANSEM or CHANSE into this coin's Horn Vault sink to earn its skimmed swap fees. Rewards accrue per block in both denoms and are claimed independently."
-          : "Preview of the live Horn Vault. Staking, sink TVL and rewards activate once the Horns program is wired in — the interface is final."}
+          : "Preview of the live Horn Vault. Staking, sink TVL and rewards activate once the Horns program is wired in; the interface is final."}
       </p>
     </section>
   );

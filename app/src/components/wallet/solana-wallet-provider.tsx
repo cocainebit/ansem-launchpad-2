@@ -17,7 +17,16 @@ import {
 } from "react";
 import { SigningCosmWasmClient } from "@cosmjs/cosmwasm-stargate";
 import { GasPrice } from "@cosmjs/stargate";
-import type { OfflineSigner } from "@cosmjs/proto-signing";
+import {
+  makeAuthInfoBytes,
+  makeSignDoc,
+  encodePubkey,
+  type OfflineSigner,
+  type OfflineDirectSigner,
+} from "@cosmjs/proto-signing";
+import { encodeSecp256k1Pubkey } from "@cosmjs/amino";
+import { TxBody } from "cosmjs-types/cosmos/tx/v1beta1/tx";
+import { toBase64 } from "@cosmjs/encoding";
 import {
   CHAIN_ID,
   RPC_URL,
@@ -35,6 +44,11 @@ interface KeplrLike {
   disable?: (chainId: string) => Promise<void>;
   getOfflineSigner: (chainId: string) => OfflineSigner;
   getKey: (chainId: string) => Promise<{ name: string; bech32Address: string }>;
+  signArbitrary?: (
+    chainId: string,
+    signer: string,
+    data: string | Uint8Array,
+  ) => Promise<{ signature: string; pub_key: { type: string; value: string } }>;
 }
 
 function providerFor(kind: WalletKind): KeplrLike | null {
@@ -74,6 +88,26 @@ const CHAIN_INFO = {
   features: ["cosmwasm"],
 };
 
+/**
+ * Result of signing a social-auth message. Two schemes:
+ *  - "adr36": the wallet's native `signArbitrary` (Keplr/Leap). Server verifies
+ *    the canonical ADR-36 amino sign doc.
+ *  - "direct": a SIGN_MODE_DIRECT SignDoc with no messages and the auth message
+ *    carried in the TxBody memo (the ANSEM wallet's offline signer only exposes
+ *    `signDirect`). The byte fields let the server rebuild the exact sign bytes.
+ */
+export type SocialSignature =
+  | { scheme: "adr36"; signature: string; pubkey: string }
+  | {
+      scheme: "direct";
+      signature: string;
+      pubkey: string;
+      bodyBytesB64: string;
+      authInfoBytesB64: string;
+      accountNumber: string;
+      chainId: string;
+    };
+
 interface AnsemWallet {
   connected: boolean;
   connecting: boolean;
@@ -88,6 +122,10 @@ interface AnsemWallet {
   refreshBalance: () => Promise<void>;
   /** A CosmWasm signing client bound to the connected signer. */
   getSigningClient: () => Promise<SigningCosmWasmClient>;
+  /** Sign a social-auth message for authenticating off-chain writes. Uses the
+   * wallet's ADR-36 signArbitrary when available, else a SIGN_MODE_DIRECT
+   * SignDoc that binds the message in its memo. No on-chain tx is broadcast. */
+  signSocial: (message: string) => Promise<SocialSignature>;
 }
 
 const Ctx = createContext<AnsemWallet | null>(null);
@@ -171,6 +209,66 @@ export function SolanaWalletProvider({ children }: { children: ReactNode }) {
     });
   }, [signer]);
 
+  const signSocial = useCallback(
+    async (message: string): Promise<SocialSignature> => {
+      if (!address) throw new Error("Connect a wallet first.");
+      let kind: WalletKind = "bwick";
+      try {
+        const raw = window.localStorage.getItem(STORAGE_KEY);
+        if (raw === "bwick" || raw === "keplr") kind = raw;
+      } catch {
+        /* ignore */
+      }
+      let provider = providerFor(kind);
+      if (!provider) provider = providerFor(kind === "bwick" ? "keplr" : "bwick");
+
+      // Preferred path: the wallet's native ADR-36 signArbitrary (Keplr/Leap).
+      if (provider?.signArbitrary) {
+        const res = await provider.signArbitrary(CHAIN_ID, address, message);
+        return { scheme: "adr36", signature: res.signature, pubkey: res.pub_key.value };
+      }
+
+      // Fallback for wallets whose offline signer only exposes signDirect (the
+      // ANSEM wallet's cosmos provider is one - it has NO signArbitrary and NO
+      // signAmino). Build a deterministic SIGN_MODE_DIRECT SignDoc with no
+      // messages and the auth message carried in the TxBody memo, so the
+      // signature is cryptographically bound to that exact message. Nothing is
+      // broadcast; this never touches the chain and costs no gas.
+      const direct = signer as OfflineDirectSigner | null;
+      if (!direct || typeof direct.signDirect !== "function") {
+        throw new Error("This wallet doesn't support message signing.");
+      }
+      const accounts = await direct.getAccounts();
+      const account = accounts.find((a) => a.address === address) ?? accounts[0];
+      if (!account) throw new Error("Wallet has no accounts.");
+      const pubkeyAny = encodePubkey(encodeSecp256k1Pubkey(account.pubkey));
+      const bodyBytes = TxBody.encode(
+        TxBody.fromPartial({ messages: [], memo: message }),
+      ).finish();
+      const authInfoBytes = makeAuthInfoBytes(
+        [{ pubkey: pubkeyAny, sequence: 0 }],
+        [],
+        0,
+        undefined,
+        undefined,
+      );
+      const signDoc = makeSignDoc(bodyBytes, authInfoBytes, CHAIN_ID, 0);
+      const res = await direct.signDirect(address, signDoc);
+      // Return exactly what the wallet signed (res.signed) so the server rebuilds
+      // identical sign bytes regardless of any normalization the wallet applied.
+      return {
+        scheme: "direct",
+        signature: res.signature.signature,
+        pubkey: res.signature.pub_key.value,
+        bodyBytesB64: toBase64(res.signed.bodyBytes),
+        authInfoBytesB64: toBase64(res.signed.authInfoBytes),
+        accountNumber: res.signed.accountNumber.toString(),
+        chainId: res.signed.chainId,
+      };
+    },
+    [address, signer],
+  );
+
   // Auto-reconnect on mount if a prior kind is remembered.
   useEffect(() => {
     let kind: WalletKind | null = null;
@@ -214,8 +312,9 @@ export function SolanaWalletProvider({ children }: { children: ReactNode }) {
       disconnect,
       refreshBalance,
       getSigningClient,
+      signSocial,
     }),
-    [address, connecting, balance, ansemBalance, walletName, connect, disconnect, refreshBalance, getSigningClient],
+    [address, connecting, balance, ansemBalance, walletName, connect, disconnect, refreshBalance, getSigningClient, signSocial],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

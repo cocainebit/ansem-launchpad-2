@@ -3,6 +3,7 @@
 import dynamic from "next/dynamic";
 import { useParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { ArrowSquareOut, Check, CopySimple, DiscordLogo, GlobeSimple, TelegramLogo, User, XLogo } from "@phosphor-icons/react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useTokenDetail } from "@/hooks/use-token-detail";
@@ -11,10 +12,14 @@ import { useTokenHolders } from "@/hooks/use-token-holders";
 import { useCandles } from "@/hooks/use-candles";
 import { TradingChartSkeleton } from "@/components/trading/trading-chart-skeleton";
 import { FloorlaunchTradePanel } from "@/components/trading/floorlaunch-trade-panel";
-import { HornsFeeSplitPanel, HornVaultPanel } from "@/components/trading/horns-panels";
+import { HornsFeeSplitPanel } from "@/components/trading/horns-panels";
+import { HornLiveTracker } from "@/components/trading/horn-live-tracker";
+import { TokenComments } from "@/components/utoken/feed";
+import { TokenProposals } from "@/components/proposals/token-proposals";
+import { fetchTokenChange24h } from "@/lib/api";
 import type { Timeframe, TokenListItem, TokenTrade } from "@/lib/api";
 import { DEFAULT_TOKEN_SUPPLY } from "@/lib/chain-config";
-import { explorerUrl, solscanUrl } from "@/lib/floorlaunch/config";
+import { explorerUrl, solscanUrl, AMM_CONTRACT, LAUNCHPAD_CONTRACT } from "@/lib/floorlaunch/config";
 
 const TradingChart = dynamic(
   () =>
@@ -55,6 +60,14 @@ export default function TokenDetailPage() {
   const visibleTrades = trades?.length ? trades : stableTrades.current.data;
   const candles = useCandles(address, timeframe);
   const holdersQuery = useTokenHolders(address);
+  // The single-token detail fetch does not carry a 24h change, so derive it from
+  // candle history (same source the list uses) to fill the header consistently.
+  const change24hQuery = useQuery({
+    queryKey: ["token-change", address],
+    queryFn: () => fetchTokenChange24h(address),
+    staleTime: 5 * 60 * 1000,
+    enabled: Boolean(address),
+  });
 
   function startInformationResize(event: React.PointerEvent<HTMLDivElement>) {
     resizeStart.current = { y: event.clientY, height: chartHeight };
@@ -95,11 +108,12 @@ export default function TokenDetailPage() {
   const collectibleName = (token.name ?? "collectible").replace(/\s*Floor$/i, "");
   const floorSol = token.market.cardIndexSol;
   const liquidityCollectibles = floorSol > 0 ? token.market.ammSolReserve / floorSol : 0;
+  const change24h = token.price_change_24h ?? change24hQuery.data ?? null;
   const stats = {
     marketCap: currencyCompact(price * DEFAULT_TOKEN_SUPPLY),
     // Per-token price is tiny; show significant digits instead of rounding to $0.
     price: price >= 0.01 ? currencyCompact(price) : `$${Number(price.toPrecision(3))}`,
-    change: token.price_change_24h,
+    change: change24h,
     vol: currencyCompact((Number(token.volume_24h) / 1_000_000) * solUsd),
     // Liquidity in collectible value - the whole point of a collectible market.
     liquidity: `${formatCollectible(liquidityCollectibles)} ${collectibleName}`,
@@ -108,8 +122,9 @@ export default function TokenDetailPage() {
   };
 
   return (
-    <div className="terminal-page flex min-h-[calc(100vh-64px)] min-w-0 flex-col bg-[#0a0a0b] text-zinc-100 xl:grid xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_360px]">
-      <main className="flex min-w-0 flex-col bg-[#0a0a0b]">
+    <div className="terminal-page mx-auto flex min-h-[calc(100vh-64px)] w-full max-w-[1440px] min-w-0 flex-col gap-4 bg-[#0d0d0f] p-4 text-zinc-100 xl:grid xl:grid-cols-[minmax(0,1fr)_360px] xl:grid-rows-[auto_auto] 2xl:grid-cols-[minmax(0,1fr)_380px]">
+        {/* TOP-LEFT: chart card */}
+        <div className="flex min-w-0 flex-col overflow-hidden rounded-2xl bg-[#17171a]">
         <div className="flex h-[70px] shrink-0 items-center justify-between gap-6 overflow-x-auto border-b border-[#161619] px-4 py-2">
           <div className="flex shrink-0 items-center gap-2.5">
             {token.image ? (
@@ -154,7 +169,7 @@ export default function TokenDetailPage() {
             </div>
           </div>
           <div className="ml-auto flex shrink-0 items-center justify-end gap-2">
-            <StatTile label="Market cap" value={stats.marketCap} primary />
+            <StatTile label="Market cap" value={stats.marketCap} />
             <StatTile label="Price" value={stats.price} />
             <StatTile label="24h change" value={formatChange(stats.change)} tone={stats.change} />
             <StatTile label="24h vol." value={stats.vol} />
@@ -194,6 +209,22 @@ export default function TokenDetailPage() {
             onRetry={() => candles.refetch()}
           />
         </div>
+        {/* Live horn tracker, directly under the chart. Preview simulation of a
+            pool's fee mechanic (Fee Decay by default) until the Horns program is
+            wired in; see the component for the live-data seam. */}
+        <HornLiveTracker token={token} />
+        </div>
+        {/* TOP-RIGHT: trade + about + horns rail. Grid stretches this cell to the
+            chart's height; the Horns wrapper is flex-1 so its surface fills the
+            remaining rail height and its bottom lands level with the chart. */}
+        <aside className="flex min-w-0 flex-col gap-4">
+          <FloorlaunchTradePanel token={token} />
+          <Overview token={token} trades={visibleTrades} />
+          <div className="flex min-h-0 flex-1 flex-col [&>section]:flex-1">
+            <HornsFeeSplitPanel token={token} />
+          </div>
+        </aside>
+        {/* BOTTOM-LEFT: expanded info panel (Holders / Transactions / Comments) */}
         <TokenInformationPanel
           token={token}
           trades={visibleTrades}
@@ -201,18 +232,19 @@ export default function TokenDetailPage() {
           onResize={resizeInformation}
           onResizeEnd={stopInformationResize}
         />
-      </main>
-      <aside className="min-w-0 space-y-3 border-l border-[#141417] bg-[#0a0a0b] p-4">
-        <FloorlaunchTradePanel token={token} />
-        <HornsFeeSplitPanel token={token} />
-        <HornVaultPanel token={token} />
-        <Overview token={token} trades={visibleTrades} />
-      </aside>
+        {/* BOTTOM-RIGHT: proposals, isolated under the right rail. The spacer
+            matches the info panel's resize handle so both cards align top/bottom. */}
+        <div className="flex h-[700px] min-w-0 flex-col">
+          <div className="hidden h-2.5 shrink-0 xl:block" />
+          <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl bg-[#17171a]">
+            <TokenProposals token={address} />
+          </section>
+        </div>
     </div>
   );
 }
 
-type InformationTab = "holders" | "transactions";
+type InformationTab = "holders" | "transactions" | "comments";
 
 function TokenInformationPanel({
   token,
@@ -260,13 +292,16 @@ function TokenInformationPanel({
       >
         <span className="h-1 w-10 rounded-full bg-[#2a2a30] transition-colors group-hover:bg-zinc-500 group-active:bg-[#6cef4b]" />
       </div>
-      <section className="mx-2 mb-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-[#1e1e22] bg-[#0a0a0b]">
-      <div className="flex h-10 shrink-0 items-center gap-5 border-b border-[#1a1a1e] bg-[#0a0a0b] px-3">
+      <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl bg-[#17171a]">
+      <div className="flex h-10 shrink-0 items-center gap-5 border-b border-[#1a1a1e] bg-[#17171a] px-3">
         <InformationTabButton active={tab === "holders"} onClick={() => setTab("holders")}>
           Holders{visibleHolders.length ? ` (${visibleHolders.length})` : ""}
         </InformationTabButton>
         <InformationTabButton active={tab === "transactions"} onClick={() => setTab("transactions")}>
           Transactions{trades.length ? ` (${trades.length})` : ""}
+        </InformationTabButton>
+        <InformationTabButton active={tab === "comments"} onClick={() => setTab("comments")}>
+          Comments
         </InformationTabButton>
       </div>
 
@@ -281,6 +316,12 @@ function TokenInformationPanel({
 
         {tab === "transactions" && (
           <TransactionsTable trades={trades} symbol={token.symbol ?? "TOKEN"} baseLabel={token.base_label ?? "CHANSE"} />
+        )}
+
+        {tab === "comments" && (
+          <div className="p-3">
+            <TokenComments token={token.address} />
+          </div>
         )}
       </div>
       </section>
@@ -331,7 +372,7 @@ function HoldersTable({
   const supplyMicro = DEFAULT_TOKEN_SUPPLY * 1_000_000;
   return (
     <table className="w-full min-w-[600px] text-[13px]">
-      <thead className="sticky top-0 z-10 bg-[#0a0a0b] text-zinc-600">
+      <thead className="sticky top-0 z-10 bg-[#17171a] text-zinc-600">
         <tr>
           <th className="border-b border-[#1e1e22] px-4 py-2 text-left text-xs font-medium">Trader</th>
           <th className="border-b border-[#1e1e22] px-4 py-2 text-right text-xs font-medium">Position</th>
@@ -341,6 +382,7 @@ function HoldersTable({
       <tbody>
         {holders.map((holder) => {
           const percentage = (Number(holder.balance) / supplyMicro) * 100;
+          const tag = poolTag(holder.address);
           return (
             <tr key={holder.address} className="border-b border-[#17171c] transition-colors last:border-0 hover:bg-[#121217]">
               <td className="px-4 py-2">
@@ -350,6 +392,11 @@ function HoldersTable({
                     <a href={explorerUrl("address", holder.address)} target="_blank" rel="noreferrer" className="font-mono text-[13px] font-semibold text-zinc-200 hover:text-[#6cef4b]">
                       {short(holder.address)}
                     </a>
+                    {tag && (
+                      <span className="rounded-[4px] border border-[#6cf07f]/30 bg-[#6cf07f]/10 px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#9ff5ae]">
+                        {tag}
+                      </span>
+                    )}
                     <a href={solscanUrl("account", holder.address)} target="_blank" rel="noreferrer" title="View on Solscan" className="text-zinc-600 hover:text-[#6cef4b]">
                       <ArrowSquareOut size={11} />
                     </a>
@@ -371,6 +418,15 @@ function HoldersTable({
   );
 }
 
+/** Flags the pool-owned holders so a big balance is not mistaken for a whale:
+ *  the AMM contract holds a graduated pool's liquidity (LP), the launchpad holds
+ *  a curve's unsold reserves. */
+function poolTag(address: string): string | null {
+  if (address === AMM_CONTRACT) return "LP";
+  if (address === LAUNCHPAD_CONTRACT) return "Bonding curve";
+  return null;
+}
+
 function WalletAvatar({ address }: { address: string }) {
   return (
     <span
@@ -389,7 +445,7 @@ function TransactionsTable({ trades, symbol, baseLabel }: { trades: TokenTrade[]
 
   return (
     <table className="w-full min-w-[720px] text-[13px]">
-      <thead className="sticky top-0 z-10 bg-[#0a0a0b] text-zinc-600">
+      <thead className="sticky top-0 z-10 bg-[#17171a] text-zinc-600">
         <tr>
           <th className="border-b border-[#1e1e22] px-4 py-2 text-left text-xs font-medium">Time</th>
           <th className="border-b border-[#1e1e22] px-4 py-2 text-left text-xs font-medium">Type</th>
@@ -443,22 +499,16 @@ function StatTile({
   label,
   value,
   tone,
-  primary = false,
 }: {
   label: string;
   value: string;
   tone?: number | null;
-  primary?: boolean;
 }) {
   return (
-    <div
-      className={`min-w-[88px] shrink-0 px-3 py-1.5 ${
-        primary ? "bg-transparent" : "rounded-lg bg-[#131316]"
-      }`}
-    >
+    <div className="min-w-[88px] shrink-0 px-3 py-1.5">
       <p className="text-center text-[11px] font-medium text-zinc-500">{label}</p>
       <p
-        className={`text-center font-bold leading-5 ${primary ? "text-lg" : "text-sm"} ${
+        className={`text-center text-[15px] font-bold leading-5 ${
           tone == null ? "text-zinc-100" : tone >= 0 ? "text-[#4ade80]" : "text-[#f87171]"
         }`}
       >
@@ -558,7 +608,7 @@ function Overview({ token, trades }: { token: TokenListItem; trades: TokenTrade[
   const sellers = new Set(sells.map((trade) => trade.trader)).size;
 
   return (
-    <section className="relative rounded-xl border border-[#1e1e22] bg-[#0e0e10]/80 px-3 pb-4 pt-3">
+    <section className="relative rounded-xl bg-[#17171a] px-3 pb-4 pt-3">
       <h2 className="text-sm font-semibold text-zinc-100">About {token.name}</h2>
       <p className="mt-1.5 line-clamp-3 text-[11px] leading-[15px] text-zinc-400">
         {token.description?.trim() || `Trade ${token.name} against its live collectible market.`}
@@ -581,7 +631,7 @@ function Overview({ token, trades }: { token: TokenListItem; trades: TokenTrade[
             >
               <span className="block text-[10px] font-semibold leading-3 text-zinc-400">{item.label}</span>
               <span className={`mt-0.5 block text-[11px] font-bold leading-4 ${change == null ? "text-zinc-500" : change >= 0 ? "text-[#22c55e]" : "text-[#ff5b35]"}`}>
-                {change == null ? "—" : `${change >= 0 ? "▲" : "▼"} ${Math.abs(change).toFixed(2)}%`}
+                {change == null ? "-" : `${change >= 0 ? "▲" : "▼"} ${Math.abs(change).toFixed(2)}%`}
               </span>
             </button>
           );
@@ -824,7 +874,7 @@ function currencyCompact(value: number): string {
 }
 
 function formatChange(value: number | null): string {
-  if (value == null) return "—";
+  if (value == null) return "-";
   return `${value >= 0 ? "+" : ""}${value.toFixed(2)}%`;
 }
 
