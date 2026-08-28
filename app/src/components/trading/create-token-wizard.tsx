@@ -178,18 +178,14 @@ const RING_ITEMS: RingEntry[] = [
   { img: "/horns/ring/06.png" },
   { img: "/horns/ring/07.png" },
   { img: "/horns/ring/08.png" },
-  { img: "/horns/ring/09.png" },
-  { img: "/horns/ring/10.png" },
-  { img: "/horns/ring/11.png" },
-  { img: "/horns/ring/12.png" },
 ];
 // Precompute orbit positions (rounded so SSR and client markup agree).
 const RING = RING_ITEMS.map((item, i) => {
   const a = (i / RING_ITEMS.length) * Math.PI * 2 - Math.PI / 2;
   return {
     ...item,
-    x: Math.round(Math.cos(a) * 68 * 100) / 100,
-    y: Math.round(Math.sin(a) * 68 * 100) / 100,
+    x: Math.round(Math.cos(a) * 86 * 100) / 100,
+    y: Math.round(Math.sin(a) * 86 * 100) / 100,
   };
 });
 
@@ -512,11 +508,11 @@ function IntroStep({ onChoose, onSkip }: { onChoose: () => void; onSkip: () => v
     <div className="flex flex-col items-center text-center">
       {/* Circular collage of revolving Horn NFT art. The ring container slowly
           revolves; each mark counter-rotates to stay upright. */}
-      <div className="relative mb-4 h-[180px] w-[180px]">
+      <div className="relative mb-4 h-[236px] w-[236px]">
         <div aria-hidden className="absolute inset-0 rounded-full border border-white/[0.04]" />
         <div
           aria-hidden
-          className="absolute inset-[46px] rounded-full border border-[#6cf07f]/15"
+          className="absolute inset-[82px] rounded-full border border-[#6cf07f]/15"
           style={{ background: "radial-gradient(circle, rgba(108,240,127,0.10), transparent 70%)" }}
         />
         <div aria-hidden className="wiz-orbit absolute inset-0">
@@ -526,12 +522,16 @@ function IntroStep({ onChoose, onSkip }: { onChoose: () => void; onSkip: () => v
               className="absolute left-1/2 top-1/2"
               style={{ transform: `translate(calc(-50% + ${item.x}px), calc(-50% + ${item.y}px))` }}
             >
-              <span className="wiz-orbit-item flex h-9 w-9 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-[#0a1610] text-emerald-100/60">
+              <span className="wiz-orbit-item flex h-16 w-16 items-center justify-center text-emerald-100/60">
                 {item.img ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={item.img} alt="" className="h-full w-full object-cover" />
+                  <img
+                    src={item.img}
+                    alt=""
+                    className="h-full w-full rounded-lg object-contain drop-shadow-[0_3px_10px_rgba(0,0,0,0.55)]"
+                  />
                 ) : item.icon ? (
-                  <item.icon size={16} weight="regular" />
+                  <item.icon size={24} weight="regular" />
                 ) : null}
               </span>
             </span>

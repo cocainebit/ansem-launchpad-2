@@ -38,6 +38,7 @@ export const HORNS: Horn[] = [
   // ── Reward layer ────────────────────────────────────────────────────────
   {
     slug: "vault",
+    icon: "/horns/icons/vault.png",
     name: "Horn Vault",
     tagline: "The reward keystone: stake ANSEM or CHANSE, earn every pool's skim",
     category: "Reward layer",
@@ -55,6 +56,7 @@ export const HORNS: Horn[] = [
   },
   {
     slug: "feeshare",
+    icon: "/horns/icons/feeshare.png",
     name: "Fee-Share",
     tagline: "Routes each swap's skim into the Vault's two sinks",
     category: "Reward layer",
@@ -71,6 +73,7 @@ export const HORNS: Horn[] = [
   },
   {
     slug: "gauge",
+    icon: "/horns/icons/gauge.png",
     name: "Gauge",
     tagline: "Anti-JIT vesting gate in front of the Vault",
     category: "Reward layer",
@@ -87,6 +90,7 @@ export const HORNS: Horn[] = [
   },
   {
     slug: "rehypo",
+    icon: "/horns/icons/rehypo.png",
     name: "Rehypothecation",
     tagline: "Treasury Horn: banks the skim, optionally deploys idle reserves",
     category: "Reward layer",
@@ -105,6 +109,7 @@ export const HORNS: Horn[] = [
   // ── Fee strategy ────────────────────────────────────────────────────────
   {
     slug: "dynfee",
+    icon: "/horns/icons/dynfee.png",
     name: "Dynamic Fee",
     tagline: "Adjusts the swap fee to conditions",
     category: "Fee strategy",
@@ -120,6 +125,7 @@ export const HORNS: Horn[] = [
   },
   {
     slug: "decay",
+    icon: "/horns/icons/decay.png",
     name: "Fee Decay",
     tagline: "Launch fee starts high and decays down",
     category: "Fee strategy",
@@ -135,6 +141,7 @@ export const HORNS: Horn[] = [
   },
   {
     slug: "auction",
+    icon: "/horns/icons/auction.png",
     name: "Fee Auction (am-AMM)",
     tagline: "Managers bid to own the pool's fee and collect its skim",
     category: "Fee strategy",
@@ -151,6 +158,7 @@ export const HORNS: Horn[] = [
   },
   {
     slug: "schedule",
+    icon: "/horns/icons/schedule.png",
     name: "Dutch Fee Schedule",
     tagline: "Delta-priced ramp over a fixed launch window",
     category: "Fee strategy",
@@ -167,6 +175,7 @@ export const HORNS: Horn[] = [
   },
   {
     slug: "witness",
+    icon: "/horns/icons/witness.png",
     name: "Same-Block Witness",
     tagline: "Surcharges same-block follow-on swaps",
     category: "Fee strategy",
@@ -184,6 +193,7 @@ export const HORNS: Horn[] = [
   // ── Liquidity & pricing ─────────────────────────────────────────────────
   {
     slug: "curve",
+    icon: "/horns/icons/curve.png",
     name: "StableSwap Curve",
     tagline: "Re-prices swaps on a StableSwap invariant",
     category: "Liquidity & pricing",
@@ -200,6 +210,7 @@ export const HORNS: Horn[] = [
   },
   {
     slug: "ldf",
+    icon: "/horns/icons/ldf.png",
     name: "Liquidity Distribution",
     tagline: "Bunni-style shaped liquidity via delta-pricing",
     category: "Liquidity & pricing",
@@ -216,6 +227,7 @@ export const HORNS: Horn[] = [
   },
   {
     slug: "arb",
+    icon: "/horns/icons/arb.png",
     name: "Oracle Arb",
     tagline: "Hands traders a capped, budgeted improvement toward the oracle",
     category: "Liquidity & pricing",
@@ -232,6 +244,7 @@ export const HORNS: Horn[] = [
   },
   {
     slug: "twamm",
+    icon: "/horns/icons/twamm.png",
     name: "TWAMM",
     tagline: "Large orders executed as time-sliced fills",
     category: "Liquidity & pricing",
@@ -247,6 +260,7 @@ export const HORNS: Horn[] = [
   },
   {
     slug: "limit",
+    icon: "/horns/icons/limit.png",
     name: "Limit Order Book",
     tagline: "On-chain resting orders, filled before the AMM",
     category: "Liquidity & pricing",
@@ -263,6 +277,7 @@ export const HORNS: Horn[] = [
   },
   {
     slug: "floor",
+    icon: "/horns/icons/floor.png",
     name: "Price Floor",
     tagline: "A funded buyback wall under the price",
     category: "Liquidity & pricing",
@@ -280,6 +295,7 @@ export const HORNS: Horn[] = [
   // ── Composition ─────────────────────────────────────────────────────────
   {
     slug: "composite",
+    icon: "/horns/icons/composite.png",
     name: "Composite Router",
     tagline: "Attach many Horns to one pool",
     category: "Composition",
