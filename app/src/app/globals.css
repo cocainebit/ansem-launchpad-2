@@ -357,6 +357,39 @@
     border: 2px solid #0a0a0b;
   }
 
+  .fee-range {
+    -webkit-appearance: none;
+    appearance: none;
+    height: 8px;
+    border-radius: 999px;
+    outline: none;
+    cursor: pointer;
+  }
+  .fee-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    border: 4px solid #06170d;
+    background: #eff8f1;
+    box-shadow: 0 0 0 2px #6cf07f, 0 4px 14px rgba(0, 0, 0, 0.45);
+    transition: transform 160ms ease, box-shadow 160ms ease;
+  }
+  .fee-range:hover::-webkit-slider-thumb,
+  .fee-range:focus-visible::-webkit-slider-thumb {
+    transform: scale(1.08);
+    box-shadow: 0 0 0 3px rgba(108, 240, 127, 0.55), 0 5px 18px rgba(0, 0, 0, 0.55);
+  }
+  .fee-range::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 999px;
+    border: 4px solid #06170d;
+    background: #eff8f1;
+    box-shadow: 0 0 0 2px #6cf07f, 0 4px 14px rgba(0, 0, 0, 0.45);
+  }
+
   h1,
   h2,
   h3,
@@ -482,3 +515,38 @@
 .terminal-page .rounded-2xl { border-radius: 10px; }
 .terminal-page .rounded-xl { border-radius: 8px; }
 .terminal-page .rounded-lg { border-radius: 6px; }
+
+/* Fee configuration sliders live outside Tailwind's component primitives, so
+   keep their native-control reset unlayered to win over browser defaults. */
+input[type="range"].fee-range {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 4px;
+  border-radius: 999px;
+  outline: none;
+  cursor: pointer;
+}
+input[type="range"].fee-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  border: 3px solid #06170d;
+  background: #eff8f1;
+  box-shadow: 0 0 0 1px #6cf07f, 0 2px 5px rgba(0, 0, 0, 0.34);
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+input[type="range"].fee-range:hover::-webkit-slider-thumb,
+input[type="range"].fee-range:focus-visible::-webkit-slider-thumb {
+  transform: scale(1.12);
+  box-shadow: 0 0 0 2px rgba(108, 240, 127, 0.5), 0 3px 8px rgba(0, 0, 0, 0.45);
+}
+input[type="range"].fee-range::-moz-range-thumb {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  border: 3px solid #06170d;
+  background: #eff8f1;
+  box-shadow: 0 0 0 1px #6cf07f, 0 2px 7px rgba(0, 0, 0, 0.38);
+}

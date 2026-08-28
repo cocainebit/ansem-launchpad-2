@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
-import { Inter, Poppins } from "next/font/google";
+import localFont from "next/font/local";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -23,7 +23,7 @@ import {
   CaretRight,
   Check,
   Plus,
-  Sparkle,
+  PencilSimple,
   type Icon,
 } from "@phosphor-icons/react";
 import { useFloorWallet } from "@/components/wallet/solana-wallet-provider";
@@ -32,29 +32,21 @@ import { resolveTokenAddressFromTx, saveTeamLaunch } from "@/lib/token-meta";
 import { HORNS, type Horn } from "@/lib/horns-catalog";
 import { BASE_DENOMS } from "@/lib/floorlaunch/config";
 
-// Fonts scoped to the create wizard only, matching app.long.xyz exactly. LONG
-// mixes two families: Inter for headings + prose, and Poppins for the chrome
-// (buttons, nav, step-item text, small hints). Both are attached via CSS
-// variables on the root wrapper's className, never the global layout, so the
-// rest of the app keeps its own stack.
-const wizSans = Inter({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+// Exact local Inter variable subset supplied for the create flow. It is scoped
+// to the wizard root so the rest of the application keeps its existing typeface.
+const wizSans = localFont({
+  src: "../../../83afe278b6a6bb3c-s.p.3a6ba036.woff2",
+  weight: "100 900",
+  style: "normal",
   variable: "--wiz-sans",
-  display: "swap",
-});
-const wizPoppins = Poppins({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--wiz-poppins",
   display: "swap",
 });
 
 // LONG typography tokens, measured off app.long.xyz/create:
 // - Heading (Inter 600, 26px, -0.26px tracking, 29.9px line-height)
 // - Body / subtitle prose (Inter 400, 15px, 18px line-height)
-// - CTA buttons + progress-bar nav labels (Poppins 600, 14px, normal tracking)
-// - Step-item + hint text (Poppins; title 600 / sub 400; 14px, ~1.4 line-height)
+// - CTA buttons + progress-bar nav labels (600, 14px, normal tracking)
+// - Step-item + hint text (title 600 / sub 400; 14px, ~1.4 line-height)
 const HEADING: React.CSSProperties = {
   fontFamily: "var(--wiz-sans)",
   fontWeight: 600,
@@ -69,14 +61,13 @@ const BODY: React.CSSProperties = {
   lineHeight: "18px",
 };
 const CTA: React.CSSProperties = {
-  fontFamily: "var(--wiz-poppins)",
+  fontFamily: "var(--wiz-sans)",
   fontWeight: 600,
   fontSize: "14px",
   letterSpacing: "normal",
 };
-// Poppins chrome family (weight set per element via className / style).
-const POPPINS: React.CSSProperties = { fontFamily: "var(--wiz-poppins)" };
-const GREEN = "#6cf07f";
+// Shared create-flow font style alias (weight set per element).
+const POPPINS: React.CSSProperties = { fontFamily: "var(--wiz-sans)" };
 
 // ── Horn selection rules (preserved verbatim from create-token-form) ─────────
 // The reward skim (Vault / Fee-Share) is the base and always implied; the
@@ -344,17 +335,15 @@ export function CreateTokenWizard() {
   }
 
   const field =
-    "h-11 w-full rounded-[8px] border border-white/10 bg-black/30 px-3.5 text-[14px] text-emerald-50 outline-none transition-colors placeholder:text-emerald-100/25 focus:border-[#6cf07f]/60";
+    "h-14 w-full rounded-[10px] border border-[#31533d] bg-[#082c18] px-4 text-[15px] text-emerald-50 outline-none transition-colors placeholder:text-emerald-100/30 focus:border-[#6cf07f]/70 focus:bg-[#0a321c]";
   const chansePct = 100 - ansemPct;
   const selectedHorns = COMPOSABLE_HORNS.filter((h) => composite.includes(h.slug));
 
   return (
     <div
-      className={`${wizSans.variable} ${wizPoppins.variable} relative mx-auto w-full max-w-[620px]`}
+      className={`${wizSans.variable} relative min-h-[calc(100dvh-128px)] w-full overflow-hidden border border-[#173323] bg-[#000f06]`}
       style={{ fontFamily: "var(--wiz-sans)" }}
     >
-      {/* Uniform LONG-style backdrop rgb(0,15,6), full-bleed, no card boundary */}
-      <div aria-hidden className="fixed inset-0 -z-10 bg-[#000f06]" />
       {/* Collage revolve: the ring container orbits, each item counter-rotates to
           stay upright. Disabled under prefers-reduced-motion. */}
       <style>{`
@@ -365,19 +354,20 @@ export function CreateTokenWizard() {
           .wiz-orbit, .wiz-orbit-item { animation: none; }
         }
       `}</style>
-      <div className="relative">
+      <div className="relative mx-auto w-full max-w-[900px] px-5 pb-12 pt-12 sm:px-8 sm:pt-16">
+        <div className="mx-auto w-full max-w-[850px]">
 
         {/* Progress bar: Back <prev> on the left, <next> > on the right, green fill */}
-        <div className="relative px-5 pt-4 sm:px-7">
+        <div className="relative px-3 sm:px-7">
           <div className="flex items-center justify-between">
             <button
               type="button"
               onClick={goPrev}
               disabled={!prevKey}
-              style={CTA}
-              className="inline-flex items-center gap-1 text-emerald-100/50 transition-colors hover:text-emerald-50 disabled:pointer-events-none disabled:opacity-0"
+              style={{ ...CTA, fontWeight: 650, fontSize: "15px" }}
+              className="inline-flex items-center gap-2 text-emerald-50 transition-colors hover:text-white disabled:pointer-events-none disabled:opacity-100"
             >
-              <CaretLeft size={14} weight="bold" />
+              <CaretLeft size={15} weight="bold" />
               Back
               <span className="text-emerald-100/30">{prevKey ? STEP_LABEL[prevKey] : ""}</span>
             </button>
@@ -385,33 +375,28 @@ export function CreateTokenWizard() {
               type="button"
               onClick={goNext}
               disabled={!nextKey || (stepKey === "name" && !nameValid)}
-              style={CTA}
-              className="inline-flex items-center gap-1 text-emerald-100/70 transition-colors hover:text-emerald-50 disabled:pointer-events-none disabled:opacity-0"
+              style={{ ...CTA, fontWeight: 650, fontSize: "15px" }}
+              className="inline-flex items-center gap-2 text-emerald-50 transition-colors hover:text-white disabled:pointer-events-none disabled:opacity-100"
             >
-              <span className="text-[#6cf07f]">{nextKey ? STEP_LABEL[nextKey] : ""}</span>
-              <CaretRight size={14} weight="bold" />
+              <span>{nextKey ? STEP_LABEL[nextKey] : "Launch a coin"}</span>
+              <CaretRight size={15} weight="bold" />
             </button>
           </div>
-          <div className="mt-3 h-[3px] w-full overflow-hidden rounded-full bg-white/[0.06]">
+          <div className="mt-4 h-[5px] w-full overflow-hidden bg-[#0b2b18]">
             <div
               className="h-full rounded-full transition-[width] duration-500 ease-out"
-              style={{ width: `${progress * 100}%`, background: GREEN, boxShadow: `0 0 12px ${GREEN}66` }}
+              style={{ width: `${progress * 100}%`, background: "#f1f7f3" }}
             />
           </div>
         </div>
 
         {/* Step body */}
-        <div key={stepKey} className="ansem-fade-in px-5 py-8 sm:px-9 sm:py-10">
+        <div key={stepKey} className="ansem-fade-in px-3 py-12 sm:px-9 sm:py-[78px]">
           {stepKey === "intro" && (
             <IntroStep
               onChoose={() => {
                 setAttachHorns(true);
                 setStepKey("horn");
-              }}
-              onSkip={() => {
-                setAttachHorns(false);
-                setComposite([]);
-                setStepKey("name");
               }}
             />
           )}
@@ -424,7 +409,6 @@ export function CreateTokenWizard() {
               toggleHorn={toggleHorn}
               expanded={expanded}
               setExpanded={setExpanded}
-              onContinue={() => setStepKey("skim")}
               onNoHorn={() => {
                 setAttachHorns(false);
                 setComposite([]);
@@ -435,6 +419,7 @@ export function CreateTokenWizard() {
 
           {stepKey === "skim" && (
             <SkimStep
+              selectedHorns={selectedHorns}
               skimPct={skimPct}
               setSkimPct={setSkimPct}
               ansemPct={ansemPct}
@@ -493,96 +478,85 @@ export function CreateTokenWizard() {
               connected={Boolean(wallet.connected)}
               submitting={submitting}
               canSubmit={canSubmit}
+              onEditDetails={() => setStepKey("name")}
+              onEditHorns={() => setStepKey("horn")}
+              onEditFees={() => setStepKey(attachHorns ? "skim" : "horn")}
               onLaunch={submit}
             />
           )}
         </div>
+        </div>
       </div>
+      {stepKey === "horn" && selectedHorns.length > 0 && (
+        <HornSelectionTray horns={selectedHorns} onContinue={() => setStepKey("skim")} />
+      )}
     </div>
   );
 }
 
 // ── Step 1: intro ────────────────────────────────────────────────────────────
-function IntroStep({ onChoose, onSkip }: { onChoose: () => void; onSkip: () => void }) {
+function IntroStep({ onChoose }: { onChoose: () => void }) {
   return (
     <div className="flex flex-col items-center text-center">
-      {/* Circular collage of revolving Horn NFT art. The ring container slowly
-          revolves; each mark counter-rotates to stay upright. */}
-      <div className="relative mb-4 h-[236px] w-[236px]">
-        <div aria-hidden className="absolute inset-0 rounded-full border border-white/[0.04]" />
-        <div
-          aria-hidden
-          className="absolute inset-[82px] rounded-full border border-[#6cf07f]/15"
-          style={{ background: "radial-gradient(circle, rgba(108,240,127,0.10), transparent 70%)" }}
-        />
-        <div aria-hidden className="wiz-orbit absolute inset-0">
-          {RING.map((item, i) => (
-            <span
-              key={i}
-              className="absolute left-1/2 top-1/2"
-              style={{ transform: `translate(calc(-50% + ${item.x}px), calc(-50% + ${item.y}px))` }}
-            >
-              <span className="wiz-orbit-item flex h-16 w-16 items-center justify-center text-emerald-100/60">
-                {item.img ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={item.img}
-                    alt=""
-                    className="h-full w-full rounded-lg object-contain drop-shadow-[0_3px_10px_rgba(0,0,0,0.55)]"
-                  />
-                ) : item.icon ? (
-                  <item.icon size={24} weight="regular" />
-                ) : null}
-              </span>
-            </span>
-          ))}
-        </div>
-      </div>
-
       <h1 style={HEADING} className="text-white">
-        Launch a coin
+        Launch with Horns
       </h1>
-      <p style={BODY} className="mt-2 max-w-[380px] text-emerald-100/55">
-        A fair-launch bonding curve on ANSEM. Bolt on a Horn to reshape how your pool trades
-        and pays holders, or launch a plain coin. A Horn is optional.
+      <p style={BODY} className="mt-3 max-w-[440px] text-emerald-100/55">
+        Add programmable liquidity to your token on ANSEM Chain
       </p>
 
-      <ol className="mt-4 w-full max-w-[400px] space-y-2 text-left">
+      <ol className="mt-14 w-full max-w-[500px] space-y-5 text-left">
         {[
-          { t: "Pick a Horn", s: "Optional hooks that skim fees and reprice the pool." },
-          { t: "Launch your coin on top of it", s: "Name it, fund the curve, graduate to the AMM." },
+          { t: "Pick a Horn" },
+          { t: "Launch a new token on top of it." },
         ].map((it, i) => (
-          <li key={i} className="flex items-start gap-3 rounded-[12px] border border-white/[0.06] bg-white/[0.02] px-4 py-2.5">
+          <li key={i} className="flex items-center gap-4">
             <span
-              style={{ ...POPPINS, fontWeight: 600 }}
-              className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[#6cf07f]/15 text-[12px] text-[#6cf07f]"
+              style={{ ...POPPINS, fontWeight: 500 }}
+              className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-emerald-100/20 bg-white/[0.035] text-[13px] text-emerald-50/70"
             >
               {i + 1}
             </span>
-            <div>
-              <p style={{ ...POPPINS, fontWeight: 600, fontSize: "14px", lineHeight: "1.4" }} className="text-emerald-50">{it.t}</p>
-              <p style={{ ...POPPINS, fontWeight: 400, fontSize: "14px", lineHeight: "1.4" }} className="mt-0.5 text-emerald-100/45">{it.s}</p>
-            </div>
+            <p style={{ ...POPPINS, fontWeight: 400, fontSize: "16px", lineHeight: "1.4" }} className="text-emerald-50/85">{it.t}</p>
           </li>
         ))}
       </ol>
+
+      <p style={{ ...POPPINS, fontWeight: 400, fontSize: "13px" }} className="mt-7 w-full max-w-[500px] text-left text-emerald-100/50">
+        Your ticker is protected during launch — no other token can claim it.
+      </p>
+
+      <div className="relative mt-16 h-[260px] w-[260px]" aria-hidden>
+        <div className="absolute inset-8 rounded-full bg-[#6cf07f]/10 blur-3xl" />
+        <div className="wiz-orbit absolute inset-0">
+          {RING.slice(0, 8).map((item, i) => {
+            const angle = (i / 8) * Math.PI * 2 - Math.PI / 2;
+            const left = 101 + Math.cos(angle) * 92;
+            const top = 101 + Math.sin(angle) * 92;
+            const Ic = item.icon;
+            return (
+              <span key={i} className="absolute" style={{ left, top }}>
+                <span className="wiz-orbit-item flex h-[58px] w-[58px] items-center justify-center rounded-full border-[4px] border-[#26312b] bg-[linear-gradient(145deg,#343b37,#080b09_68%)] text-emerald-50/75 shadow-[0_8px_16px_rgba(0,0,0,.45),inset_0_1px_2px_rgba(255,255,255,.25)]">
+                  {item.img ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={item.img} alt="" className="h-full w-full rounded-full object-contain" />
+                  ) : Ic ? (
+                    <Ic size={25} weight={i === 0 ? "fill" : "regular"} className={i === 0 ? "text-[#6cf07f]" : ""} />
+                  ) : null}
+                </span>
+              </span>
+            );
+          })}
+        </div>
+      </div>
 
       <button
         type="button"
         onClick={onChoose}
         style={CTA}
-        className="mt-5 inline-flex h-12 w-full max-w-[400px] items-center justify-center gap-2 rounded-[10px] bg-[#6cf07f] text-[#04160b] transition-transform hover:brightness-105 active:scale-[0.99]"
+        className="mt-5 inline-flex h-14 w-full max-w-[600px] items-center justify-center gap-2 rounded-[14px] bg-[#f1f7f3] text-[#082114] transition-transform hover:brightness-105 active:scale-[0.99]"
       >
-        <Sparkle size={17} weight="fill" />
-        Choose a Horn
-      </button>
-      <button
-        type="button"
-        onClick={onSkip}
-        style={{ ...POPPINS, fontWeight: 500, fontSize: "14px" }}
-        className="mt-2 text-emerald-100/45 underline-offset-4 transition-colors hover:text-emerald-100/80 hover:underline"
-      >
-        Launch without a Horn
+        CHOOSE A HORN
       </button>
     </div>
   );
@@ -596,7 +570,6 @@ function HornStep({
   toggleHorn,
   expanded,
   setExpanded,
-  onContinue,
   onNoHorn,
 }: {
   query: string;
@@ -605,7 +578,6 @@ function HornStep({
   toggleHorn: (slug: string) => void;
   expanded: string | null;
   setExpanded: (v: string | null) => void;
-  onContinue: () => void;
   onNoHorn: () => void;
 }) {
   const q = query.trim().toLowerCase();
@@ -613,38 +585,39 @@ function HornStep({
     !q ||
     h.name.toLowerCase().includes(q) ||
     h.tagline.toLowerCase().includes(q) ||
-    h.blurb.toLowerCase().includes(q);
+    h.blurb.toLowerCase().includes(q) ||
+    h.category.toLowerCase().includes(q);
   const featured = COMPOSABLE_HORNS.filter((h) => FEATURED.includes(h.slug));
+  const visible = COMPOSABLE_HORNS.filter(match);
+  const recentlyAdded = COMPOSABLE_HORNS.slice(-6);
 
   return (
-    <div>
-      <h2 style={HEADING} className="text-white">
+    <div className="mx-auto max-w-[680px]">
+      <h2 style={HEADING} className="text-center text-white">
         Pick your Horn
       </h2>
-      <p style={BODY} className="mt-2 text-emerald-100/55">
-        It reshapes how your pool trades and pays holders. Stack a few, or pick one solo Horn.
-      </p>
-      <p style={{ ...POPPINS, fontWeight: 400, fontSize: "13px", lineHeight: "1.4" }} className="mt-3 flex items-start gap-2 rounded-[9px] border border-[#6cf07f]/15 bg-[#6cf07f]/[0.05] px-3 py-2 text-emerald-100/55">
-        <ShieldCheck size={15} weight="fill" className="mt-[1px] shrink-0 text-[#6cf07f]/80" />
-        At most one pricing Horn and one fee Horn. Some Horns run solo, so picking one can replace another.
+      <p style={BODY} className="mt-2 text-center text-emerald-100/55">
+        Choose how your token trades and rewards holders.
       </p>
 
-      {/* Search */}
-      <div className="relative mt-5">
-        <MagnifyingGlass size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-emerald-100/35" />
+      <div className="relative mt-10">
+        <MagnifyingGlass size={16} className="absolute left-5 top-1/2 -translate-y-1/2 text-emerald-100/55" />
         <input
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search Horns..."
-          className="h-11 w-full rounded-[10px] border border-white/10 bg-black/30 pl-10 pr-3.5 text-[14px] text-emerald-50 outline-none placeholder:text-emerald-100/25 focus:border-[#6cf07f]/60"
+          placeholder={`Search ${COMPOSABLE_HORNS.length} Horns`}
+          className="h-14 w-full rounded-[14px] border border-[#31533d] bg-[#061d0f] pl-12 pr-4 text-[15px] text-emerald-50 outline-none placeholder:text-emerald-100/35 focus:border-[#6cf07f]/60"
         />
       </div>
 
-      {/* Quick pick */}
       {!q && (
-        <div className="mt-5">
-          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-100/35">Quick pick</p>
-          <div className="flex flex-wrap gap-2">
+        <>
+        <section className="mt-7">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 style={{ ...POPPINS, fontWeight: 600 }} className="text-[14px] text-emerald-50">Quick pick</h3>
+            <span className="text-[12px] text-emerald-100/35">Click to select</span>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
             {featured.map((h) => {
               const Ic = hornIcon(h.slug);
               const on = composite.includes(h.slug);
@@ -653,62 +626,84 @@ function HornStep({
                   key={h.slug}
                   type="button"
                   onClick={() => toggleHorn(h.slug)}
-                  style={{ ...POPPINS, fontWeight: 500, fontSize: "13px" }}
-                  className={`inline-flex items-center gap-2 rounded-[10px] border px-3 py-2 transition-colors ${
+                  className={`flex min-w-0 items-center gap-3 rounded-[14px] border p-4 text-left transition-colors ${
                     on
-                      ? "border-[#6cf07f]/60 bg-[#6cf07f]/12 text-[#9ff5ae]"
-                      : "border-white/10 bg-white/[0.02] text-emerald-100/70 hover:border-white/20 hover:text-emerald-50"
+                      ? "border-[#6cf07f]/70 bg-[#123c21]"
+                      : "border-[#31533d] bg-[#092916] hover:border-[#527a60]"
                   }`}
                 >
-                  <Ic size={16} weight={on ? "fill" : "regular"} />
-                  {h.name}
-                  {on && <Check size={14} weight="bold" className="text-[#6cf07f]" />}
+                  <span className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full border-[3px] border-[#34443b] bg-[#111713] ${on ? "text-[#6cf07f]" : "text-emerald-50/70"}`}>
+                    <Ic size={21} weight={on ? "fill" : "regular"} />
+                  </span>
+                  <span className="min-w-0">
+                    <span style={{ ...POPPINS, fontWeight: 600 }} className="block truncate text-[14px] text-emerald-50">{h.name}</span>
+                    <span className="mt-1 block truncate text-[12px] text-emerald-100/45">{h.category}</span>
+                  </span>
                 </button>
               );
             })}
           </div>
-        </div>
+        </section>
+
+        <section className="mt-8">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 style={{ ...POPPINS, fontWeight: 600 }} className="text-[14px] text-emerald-50">Themes</h3>
+            <span className="text-[12px] text-emerald-100/35">See all</span>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-3">
+            {PICKER_GROUPS.map((grp) => {
+              const horns = COMPOSABLE_HORNS.filter((h) => h.category === grp.category);
+              return (
+                <button key={grp.label} type="button" onClick={() => setQuery(grp.label)} className="rounded-[14px] border border-[#31533d] bg-[#092916] p-4 text-left transition-colors hover:border-[#527a60]">
+                  <span className="flex -space-x-2">
+                    {horns.slice(0, 3).map((h) => {
+                      const Ic = hornIcon(h.slug);
+                      return <span key={h.slug} className="flex h-9 w-9 items-center justify-center rounded-full border-2 border-[#243d2d] bg-[#111713] text-emerald-50/70"><Ic size={16} /></span>;
+                    })}
+                  </span>
+                  <span style={{ ...POPPINS, fontWeight: 600 }} className="mt-5 block text-[14px] text-emerald-50">{grp.label}</span>
+                  <span className="mt-1 block text-[12px] text-emerald-100/45">{horns.length} Horns</span>
+                </button>
+              );
+            })}
+          </div>
+        </section>
+
+        <section className="mt-9">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 style={{ ...POPPINS, fontWeight: 600 }} className="text-[14px] text-emerald-50">Trending</h3>
+            <span className="text-[12px] text-emerald-100/35">Popular</span>
+          </div>
+          <div className="space-y-1">
+            {featured.map((h, i) => <HornListButton key={h.slug} horn={h} rank={i + 1} selected={composite.includes(h.slug)} onClick={() => toggleHorn(h.slug)} />)}
+          </div>
+        </section>
+
+        <section className="mt-9">
+          <div className="mb-3 flex items-center justify-between">
+            <h3 style={{ ...POPPINS, fontWeight: 600 }} className="text-[14px] text-emerald-50">Recently added</h3>
+            <span className="text-[12px] text-emerald-100/35">{recentlyAdded.length} Horns</span>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {recentlyAdded.map((h) => <HornMarketCard key={h.slug} horn={h} selected={composite.includes(h.slug)} onClick={() => toggleHorn(h.slug)} />)}
+          </div>
+        </section>
+        </>
       )}
 
-      {/* Category groups */}
-      <div className="mt-6 space-y-6">
-        {PICKER_GROUPS.map((grp) => {
-          const rows = COMPOSABLE_HORNS.filter((h) => h.category === grp.category && match(h));
-          if (rows.length === 0) return null;
-          return (
-            <div key={grp.label}>
-              <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-100/35">
-                {grp.label}
-              </p>
-              <div className="space-y-2">
-                {rows.map((h) => (
-                  <HornRow
-                    key={h.slug}
-                    horn={h}
-                    selected={composite.includes(h.slug)}
-                    open={expanded === h.slug}
-                    onToggleSelect={() => toggleHorn(h.slug)}
-                    onToggleOpen={() => setExpanded(expanded === h.slug ? null : h.slug)}
-                  />
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      <section className="mt-10">
+        <div className="mb-3 flex items-center justify-between">
+          <h3 style={{ ...POPPINS, fontWeight: 600 }} className="text-[14px] text-emerald-50">All Horns</h3>
+          <span className="text-[12px] text-emerald-100/35">A–Z</span>
+        </div>
+        <div className="space-y-2">
+          {visible.length ? visible.map((h) => (
+            <HornRow key={h.slug} horn={h} selected={composite.includes(h.slug)} open={expanded === h.slug} onToggleSelect={() => toggleHorn(h.slug)} onToggleOpen={() => setExpanded(expanded === h.slug ? null : h.slug)} />
+          )) : <p className="py-10 text-center text-[14px] text-emerald-100/40">No Horns match “{query}”.</p>}
+        </div>
+      </section>
 
-      {/* Footer nav */}
-      <div className="mt-8 flex flex-col gap-3">
-        <button
-          type="button"
-          onClick={onContinue}
-          style={CTA}
-          className="h-12 w-full rounded-[10px] bg-[#6cf07f] text-[#04160b] transition hover:brightness-105 active:scale-[0.99]"
-        >
-          {composite.length > 0
-            ? `Continue with ${composite.length} ${composite.length === 1 ? "Horn" : "Horns"}`
-            : "Continue with the reward skim"}
-        </button>
+      <div className="mt-8 flex justify-center pb-24">
         <button
           type="button"
           onClick={onNoHorn}
@@ -718,7 +713,59 @@ function HornStep({
           No Horn, launch a regular coin
         </button>
       </div>
+
     </div>
+  );
+}
+
+function HornSelectionTray({ horns, onContinue }: { horns: Horn[]; onContinue: () => void }) {
+  const PrimaryIcon = hornIcon(horns[0].slug);
+  return (
+    <div className="fixed inset-x-4 bottom-5 z-40 mx-auto flex max-w-[760px] items-center gap-3 rounded-[18px] bg-[#161616]/95 p-3 shadow-[0_18px_60px_rgba(0,0,0,.55)] backdrop-blur-xl sm:bottom-7 sm:p-4">
+      <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#1c1c1e] text-[#6cf07f]">
+        <PrimaryIcon size={21} weight="fill" />
+      </span>
+      <span className="min-w-0 flex-1 text-left">
+        <span style={{ ...POPPINS, fontWeight: 600 }} className="block truncate text-[14px] text-white">
+          {horns[0].name}{horns.length > 1 ? ` +${horns.length - 1}` : ""}
+        </span>
+        <span className="mt-0.5 block truncate text-[12px] text-zinc-500">
+          {horns.length === 1 ? horns[0].category : `${horns.length} Horns selected`}
+        </span>
+      </span>
+      <button type="button" onClick={onContinue} style={CTA} className="h-11 shrink-0 rounded-full bg-[#6cf07f] px-7 text-black transition hover:brightness-105 active:scale-[0.99] sm:px-9">
+        Continue
+      </button>
+    </div>
+  );
+}
+
+function HornListButton({ horn, rank, selected, onClick }: { horn: Horn; rank: number; selected: boolean; onClick: () => void }) {
+  const Ic = hornIcon(horn.slug);
+  return (
+    <button type="button" onClick={onClick} aria-pressed={selected} className="flex w-full items-center gap-4 rounded-[10px] px-3 py-2 text-left transition-colors hover:bg-white/[0.035]">
+      <span className="w-4 text-center text-[12px] text-emerald-100/35">{rank}</span>
+      <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 border-[#2d3d34] bg-[#111713] ${selected ? "text-[#6cf07f]" : "text-emerald-50/70"}`}><Ic size={17} weight={selected ? "fill" : "regular"} /></span>
+      <span className="min-w-0 flex-1">
+        <span style={{ ...POPPINS, fontWeight: 600 }} className="block truncate text-[14px] text-emerald-50">{horn.name}</span>
+        <span className="block truncate text-[12px] text-emerald-100/45">{horn.tagline}</span>
+      </span>
+      <span className="text-[12px] font-medium text-[#6cf07f]">{selected ? "Selected" : `${horn.hooks.length} hooks`}</span>
+    </button>
+  );
+}
+
+function HornMarketCard({ horn, selected, onClick }: { horn: Horn; selected: boolean; onClick: () => void }) {
+  const Ic = hornIcon(horn.slug);
+  return (
+    <button type="button" onClick={onClick} aria-pressed={selected} className={`flex items-center gap-4 rounded-[14px] border p-4 text-left transition-colors ${selected ? "border-[#6cf07f]/70 bg-[#123c21]" : "border-[#31533d] bg-[#092916] hover:border-[#527a60]"}`}>
+      <span className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-[3px] border-[#34443b] bg-[#111713] ${selected ? "text-[#6cf07f]" : "text-emerald-50/70"}`}><Ic size={22} weight={selected ? "fill" : "regular"} /></span>
+      <span className="min-w-0 flex-1">
+        <span style={{ ...POPPINS, fontWeight: 600 }} className="block truncate text-[14px] text-emerald-50">{horn.name}</span>
+        <span className="mt-1 block truncate text-[12px] text-emerald-100/45">{horn.category}</span>
+      </span>
+      {selected && <Check size={16} weight="bold" className="text-[#6cf07f]" />}
+    </button>
   );
 }
 
@@ -823,6 +870,7 @@ function HornRow({
 
 // ── Step 3: skim / fees ──────────────────────────────────────────────────────
 function SkimStep({
+  selectedHorns,
   skimPct,
   setSkimPct,
   ansemPct,
@@ -830,6 +878,7 @@ function SkimStep({
   chansePct,
   onContinue,
 }: {
+  selectedHorns: Horn[];
   skimPct: number;
   setSkimPct: (v: number) => void;
   ansemPct: number;
@@ -838,74 +887,88 @@ function SkimStep({
   onContinue: () => void;
 }) {
   const skimBps = Math.round(skimPct * 100);
+  const primaryHorn = selectedHorns[0];
+  const FeeIcon = primaryHorn ? hornIcon(primaryHorn.slug) : Coins;
+  const feeTitle = primaryHorn
+    ? `${primaryHorn.name}${selectedHorns.length > 1 ? ` +${selectedHorns.length - 1}` : ""} fees`
+    : "Horn fees";
   return (
-    <div>
+    <div className="mx-auto flex max-w-[600px] flex-col items-center text-center">
       <h2 style={HEADING} className="text-white">
-        Who gets the fees?
+        {feeTitle}
       </h2>
       <p style={BODY} className="mt-2 text-emerald-100/55">
-        On ANSEM the skim goes to the Horn Vault, not a personal wallet. Stakers of ANSEM and
-        CHANSE earn it. Set how much to skim and how to split the two sinks.
+        How fees work with your selected Horns
       </p>
 
-      <div className="mt-6 rounded-[14px] border border-white/[0.07] bg-white/[0.02] p-5">
-        {/* Skim slider */}
-        <div className="flex items-center justify-between text-[13px]">
-          <span className="text-emerald-100/60">Skim to Horn Vault</span>
-          <span style={{ ...POPPINS, fontWeight: 600 }} className="text-[#6cf07f]">{skimPct}% of swap fees</span>
-        </div>
-        <input
-          type="range"
-          min={0}
-          max={10}
-          step={1}
-          value={skimPct}
-          onChange={(e) => setSkimPct(Number(e.target.value))}
-          className="ansem-range mt-3 w-full"
-          aria-label="Skim percentage"
-        />
-        <p className="mt-2 text-[11.5px] text-emerald-100/40">
-          {skimBps} bps of every swap fee is skimmed to the Vault when your coin graduates.
-        </p>
-
-        {/* Split */}
-        <div className="mt-6 flex items-center justify-between text-[13px]">
-          <span className="text-emerald-100/60">Sink split</span>
-          <span style={{ ...POPPINS, fontWeight: 600 }}>
-            <span className="text-[#6cf07f]">{ansemPct}%</span>
-            <span className="text-emerald-100/40"> ANSEM / </span>
-            <span className="text-[#8ab4ff]">{chansePct}%</span>
-            <span className="text-emerald-100/40"> CHANSE</span>
-          </span>
-        </div>
-        <div className="mt-3 flex h-2.5 overflow-hidden rounded-full">
-          <span style={{ width: `${ansemPct}%`, background: "#6cf07f" }} className="block h-full" />
-          <span style={{ width: `${chansePct}%`, background: "#8ab4ff" }} className="block h-full" />
-        </div>
-        <input
-          type="range"
-          min={0}
-          max={100}
-          step={5}
-          value={ansemPct}
-          onChange={(e) => setAnsemPct(Number(e.target.value))}
-          className="ansem-range mt-3 w-full"
-          aria-label="ANSEM share of the skim"
-        />
+      <div className="mt-14 flex h-[118px] w-[118px] items-center justify-center rounded-full border-[7px] border-[#324039] bg-[linear-gradient(145deg,#353d38,#090d0a_70%)] text-[#6cf07f] shadow-[0_18px_35px_rgba(0,0,0,.5),inset_0_2px_3px_rgba(255,255,255,.22)]">
+        <FeeIcon size={48} weight="fill" />
       </div>
 
-      <p className="mt-4 text-[11.5px] leading-5 text-emerald-100/40">
-        Horns is in preview; the skim activates with the Horns program. Until then a Horn coin
-        launches normally and the config is recorded for graduation.
+      <p style={{ ...POPPINS, fontWeight: 400 }} className="mt-7 text-[15px] text-emerald-50/80">
+        <strong className="font-semibold text-white">{skimPct}% of every swap fee</strong> goes to the Horn Vault, split between:
+      </p>
+
+      <div className="mt-5 w-full space-y-3 text-left">
+        <div className="flex min-h-[72px] items-center gap-5 rounded-[13px] border border-[#31533d] bg-white/[0.035] px-5">
+          <span style={{ ...POPPINS, fontWeight: 600 }} className="w-[76px] shrink-0 text-[20px] text-[#6cf07f]">{ansemPct}%</span>
+          <span className="text-[14px] text-emerald-50/80">rewards ANSEM stakers</span>
+        </div>
+        <div className="flex min-h-[72px] items-center gap-5 rounded-[13px] border border-[#31533d] bg-white/[0.035] px-5">
+          <span style={{ ...POPPINS, fontWeight: 600 }} className="w-[76px] shrink-0 text-[20px] text-[#8ab4ff]">{chansePct}%</span>
+          <span className="text-[14px] text-emerald-50/80">rewards CHANSE stakers</span>
+        </div>
+      </div>
+
+      <div className="mt-6 w-full space-y-5 text-left">
+        <div>
+          <div className="mb-3 flex items-center justify-between">
+            <span style={{ ...POPPINS, fontWeight: 500 }} className="text-[12px] text-emerald-50/50">Vault skim</span>
+            <span style={{ ...POPPINS, fontWeight: 600 }} className="text-[12px] text-[#8ff49d]">{skimBps} bps</span>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={10}
+            step={1}
+            value={skimPct}
+            onChange={(e) => setSkimPct(Number(e.target.value))}
+            className="fee-range w-full"
+            style={{ background: `linear-gradient(to right, #6cf07f 0%, #6cf07f ${skimPct * 10}%, #1b2b21 ${skimPct * 10}%, #1b2b21 100%)` }}
+            aria-label="Skim percentage"
+          />
+        </div>
+
+        <div>
+          <div className="mb-3 flex items-center justify-between">
+            <span style={{ ...POPPINS, fontWeight: 500 }} className="text-[12px] text-emerald-50/50">Reward split</span>
+            <span style={{ ...POPPINS, fontWeight: 600 }} className="text-[12px]"><span className="text-[#8ff49d]">{ansemPct}</span><span className="text-emerald-100/25">/</span><span className="text-[#a9c7ff]">{chansePct}</span></span>
+          </div>
+          <input
+            type="range"
+            min={0}
+            max={100}
+            step={5}
+            value={ansemPct}
+            onChange={(e) => setAnsemPct(Number(e.target.value))}
+            className="fee-range w-full"
+            style={{ background: `linear-gradient(to right, #6cf07f 0%, #6cf07f ${ansemPct}%, #8ab4ff ${ansemPct}%, #8ab4ff 100%)` }}
+            aria-label="ANSEM share of the skim"
+          />
+        </div>
+      </div>
+
+      <p className="mt-4 max-w-[520px] text-[11.5px] leading-5 text-emerald-100/35">
+        The skim activates with the Horns program at graduation. Until then, its configuration is recorded with your launch.
       </p>
 
       <button
         type="button"
         onClick={onContinue}
         style={CTA}
-        className="mt-7 h-12 w-full rounded-[10px] bg-[#6cf07f] text-[#04160b] transition hover:brightness-105 active:scale-[0.99]"
+        className="mt-7 h-14 w-full rounded-[14px] bg-[#f1f7f3] text-[#082114] transition hover:brightness-105 active:scale-[0.99]"
       >
-        Next: name your token
+        CONTINUE
       </button>
     </div>
   );
@@ -952,118 +1015,112 @@ function NameStep(props: {
   const ticker = symbol.trim() ? `$${symbol.trim().toUpperCase()}` : "$TICKER";
 
   return (
-    <div>
-      <h2 style={HEADING} className="text-white">
+    <div className="mx-auto w-full max-w-[600px]">
+      <h2 style={HEADING} className="text-center text-white">
         Name your token
       </h2>
-      <p style={BODY} className="mt-2 text-emerald-100/55">
-        This is how your coin shows up everywhere. Ticker and name are required.
+      <p style={BODY} className="mt-2 text-center text-emerald-100/55">
+        This is how it shows up everywhere.
       </p>
 
       {/* Live preview card */}
-      <div className="mt-5 flex items-center gap-3.5 rounded-[14px] border border-[#6cf07f]/15 bg-[#6cf07f]/[0.04] p-4">
+      <div className="mt-14 flex min-h-[100px] items-center gap-4 rounded-[16px] border border-[#31533d] bg-[#082c18] px-5 py-4 shadow-[0_14px_40px_rgba(0,0,0,.18)]">
         {image ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={image} alt="token" className="h-14 w-14 shrink-0 rounded-[12px] object-cover" />
+          <img src={image} alt="token" className="h-14 w-14 shrink-0 rounded-full object-cover" />
         ) : (
-          <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[12px] bg-black/40 text-emerald-100/30">
-            <Coins size={24} />
-          </div>
+          <div className="h-14 w-14 shrink-0 rounded-full bg-[radial-gradient(circle_at_32%_28%,#dff7e5,#83aa8d_55%,#43604b)] shadow-[inset_0_1px_3px_rgba(255,255,255,.45)]" aria-hidden />
         )}
-        <div className="min-w-0">
-          <div className="flex items-baseline gap-2">
-            <span style={{ fontFamily: "var(--wiz-sans)" }} className="truncate text-[17px] font-bold text-white">{ticker}</span>
-            <span className="truncate text-[13px] text-emerald-100/50">{name.trim() || "Your token"}</span>
-          </div>
-          <div className="mt-1 flex items-center gap-2 text-[11px]">
-            <span className="rounded-[5px] border border-white/10 bg-black/30 px-1.5 py-0.5 text-emerald-100/50">
-              Bonding curve
-            </span>
-            <span className="text-emerald-100/40">
-              trades in {base === "chanse" ? "CHANSE" : "ANSEM"}
-            </span>
-          </div>
+        <div className="min-w-0 flex-1">
+          <span style={{ fontFamily: "var(--wiz-sans)" }} className="block truncate text-[18px] font-bold text-white">{ticker}</span>
+          <span className="mt-1 block truncate text-[13px] text-emerald-100/55">{name.trim() || "Your token"}</span>
+        </div>
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-[3px] border-[#435248] bg-[#101713] text-[#6cf07f] shadow-[0_4px_12px_rgba(0,0,0,.35)]">
+          <Coins size={17} weight="fill" />
         </div>
       </div>
 
-      <div className="mt-6 grid gap-4 sm:grid-cols-2">
+      <div className="mt-8 space-y-5">
         <div>
-          <label className="mb-1.5 block text-[12.5px] font-medium text-emerald-100/60">Ticker</label>
-          <input className={field} value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder="MTK" maxLength={12} />
+          <label className="mb-2 block text-[14px] font-semibold text-emerald-50">Ticker</label>
+          <input className={field} value={symbol} onChange={(e) => setSymbol(e.target.value)} placeholder="TICKER" maxLength={12} />
+          <p className="mt-2 text-[12px] text-[#6cf07f]">• Available — held for you during launch</p>
         </div>
         <div>
-          <label className="mb-1.5 block text-[12.5px] font-medium text-emerald-100/60">Name</label>
-          <input className={field} value={name} onChange={(e) => setName(e.target.value)} placeholder="My Token" />
+          <label className="mb-2 block text-[14px] font-semibold text-emerald-50">Name</label>
+          <input className={field} value={name} onChange={(e) => setName(e.target.value)} placeholder="Token name" />
         </div>
-      </div>
 
-      {/* Image */}
-      <div className="mt-4">
-        <label className="mb-1.5 block text-[12.5px] font-medium text-emerald-100/60">Image</label>
-        <div
-          role="button"
-          tabIndex={0}
-          onClick={() => fileRef.current?.click()}
-          onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && fileRef.current?.click()}
-          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
-          onDragLeave={() => setDragOver(false)}
-          onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files?.[0]); }}
-          className={`flex cursor-pointer items-center gap-4 rounded-[12px] border border-dashed px-4 py-4 transition ${
-            dragOver ? "border-[#6cf07f] bg-[#6cf07f]/10" : "border-white/15 bg-black/20 hover:border-white/25"
-          }`}
-        >
-          {image ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={image} alt="token" className="h-12 w-12 shrink-0 rounded-[10px] object-cover" />
-          ) : (
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[10px] bg-black/40 text-emerald-100/40">
-              <Plus size={20} />
-            </div>
-          )}
-          <div className="min-w-0 text-[13px]">
-            <p className="font-medium text-emerald-50">
-              {imgBusy ? "Processing..." : image ? "Image ready, click to replace" : "Drag and drop or click to upload"}
-            </p>
-            <p className="mt-0.5 text-[11.5px] text-emerald-100/40">PNG, JPG or GIF. Downscaled to 256px and stored with the token.</p>
+        {/* Image */}
+        <div>
+          <label className="mb-2 block text-[14px] font-semibold text-emerald-50">Image</label>
+          <div
+            role="button"
+            tabIndex={0}
+            onClick={() => fileRef.current?.click()}
+            onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && fileRef.current?.click()}
+            onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+            onDragLeave={() => setDragOver(false)}
+            onDrop={(e) => { e.preventDefault(); setDragOver(false); handleFile(e.dataTransfer.files?.[0]); }}
+            className={`flex min-h-14 cursor-pointer items-center gap-3 rounded-[10px] border px-4 transition ${
+              dragOver ? "border-[#6cf07f] bg-[#103d22]" : "border-[#31533d] bg-[#082c18] hover:border-[#527a60]"
+            }`}
+          >
+            {image ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={image} alt="token" className="h-9 w-9 shrink-0 rounded-full object-cover" />
+            ) : (
+              <Plus size={18} className="shrink-0 text-[#6cf07f]" />
+            )}
+            <span className="text-[15px] text-emerald-50/85">
+              {imgBusy ? "Processing..." : image ? "Image ready — click to replace" : "Upload image"}
+            </span>
+          </div>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            className="hidden"
+            onChange={(e) => { handleFile(e.target.files?.[0]); e.target.value = ""; }}
+          />
+          <input
+            className={`${field} mt-2`}
+            value={image.startsWith("data:") ? "" : image}
+            onChange={(e) => setImage(e.target.value)}
+            placeholder="Or paste an image URL"
+          />
+          <p className="mt-2 text-[11.5px] text-emerald-100/40">PNG, JPG or GIF. Images are downscaled to 256px.</p>
+        </div>
+
+        {/* Socials */}
+        <div>
+          <label className="mb-2 block text-[14px] font-semibold text-emerald-50">
+            Social links <span className="ml-1 font-normal text-emerald-100/45">(optional)</span>
+          </label>
+          <div className="space-y-2">
+            <input className={field} value={twitter} onChange={(e) => setTwitter(e.target.value)} placeholder="X / Twitter link" />
+            <input className={field} value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="Website link" />
+            <input className={field} value={telegram} onChange={(e) => setTelegram(e.target.value)} placeholder="Telegram link" />
           </div>
         </div>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/*"
-          className="hidden"
-          onChange={(e) => { handleFile(e.target.files?.[0]); e.target.value = ""; }}
-        />
-        <input
-          className={`${field} mt-2`}
-          value={image.startsWith("data:") ? "" : image}
-          onChange={(e) => setImage(e.target.value)}
-          placeholder="...or paste an image URL"
-        />
-      </div>
 
-      {/* Description */}
-      <div className="mt-4">
-        <label className="mb-1.5 block text-[12.5px] font-medium text-emerald-100/60">Description</label>
-        <textarea
-          className="w-full resize-none rounded-[8px] border border-white/10 bg-black/30 px-3.5 py-3 text-[14px] text-emerald-50 outline-none placeholder:text-emerald-100/25 focus:border-[#6cf07f]/60"
-          rows={3}
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="What is this token? (optional)"
-        />
-      </div>
-
-      {/* Socials */}
-      <div className="mt-4 grid gap-3 sm:grid-cols-3">
-        <input className={field} value={twitter} onChange={(e) => setTwitter(e.target.value)} placeholder="Twitter" />
-        <input className={field} value={website} onChange={(e) => setWebsite(e.target.value)} placeholder="Website" />
-        <input className={field} value={telegram} onChange={(e) => setTelegram(e.target.value)} placeholder="Telegram" />
+        {/* Description */}
+        <div>
+          <label className="mb-2 block text-[14px] font-semibold text-emerald-50">
+            Description <span className="ml-1 font-normal text-emerald-100/45">(optional)</span>
+          </label>
+          <textarea
+            className="min-h-[150px] w-full resize-y rounded-[10px] border border-[#31533d] bg-[#082c18] px-4 py-3.5 text-[15px] leading-6 text-emerald-50 outline-none transition-colors placeholder:text-emerald-100/30 focus:border-[#6cf07f]/70 focus:bg-[#0a321c]"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            placeholder="Tell people about your token"
+          />
+        </div>
       </div>
 
       {/* Base denomination */}
-      <div className="mt-6">
-        <label className="mb-1.5 block text-[12.5px] font-medium text-emerald-100/60">Launch denomination</label>
+      <div className="mt-5">
+        <label className="mb-2 block text-[14px] font-semibold text-emerald-50">Launch denomination</label>
         <div className="flex gap-2">
           {(["chanse", "ansem"] as BaseChoice[]).map((b) => (
             <button
@@ -1071,8 +1128,8 @@ function NameStep(props: {
               type="button"
               onClick={() => setBase(b)}
               style={{ ...POPPINS, fontWeight: 600 }}
-              className={`flex-1 rounded-[9px] px-4 py-3 text-[13px] uppercase tracking-[0.06em] transition ${
-                base === b ? "bg-[#6cf07f] text-[#04160b]" : "border border-white/10 bg-black/30 text-emerald-100/55 hover:text-white"
+              className={`h-14 flex-1 rounded-[10px] px-4 text-[13px] uppercase tracking-[0.06em] transition ${
+                base === b ? "bg-[#6cf07f] text-[#04160b]" : "border border-[#31533d] bg-[#082c18] text-emerald-100/60 hover:border-[#527a60] hover:text-white"
               }`}
             >
               {b === "chanse" ? "CHANSE" : "ANSEM"}
@@ -1086,8 +1143,8 @@ function NameStep(props: {
       </div>
 
       {base === "ansem" && (
-        <div className="mt-4 ansem-fade-in">
-          <label className="mb-1.5 block text-[12.5px] font-medium text-emerald-100/60">Graduation target (ANSEM)</label>
+        <div className="mt-5 ansem-fade-in">
+          <label className="mb-2 block text-[14px] font-semibold text-emerald-50">Graduation target (ANSEM)</label>
           <input className={field} value={gradAnsem} onChange={(e) => setGradAnsem(e.target.value)} placeholder="e.g. 50" inputMode="decimal" />
           <p className="mt-2 text-[11.5px] leading-5 text-emerald-100/40">
             ANSEM launches bypass the CHANSE/USD oracle. Set how much ANSEM the curve raises before graduating.
@@ -1096,7 +1153,7 @@ function NameStep(props: {
       )}
 
       {/* Team token launch */}
-      <div className="mt-6 rounded-[12px] border border-white/[0.07] bg-white/[0.02] p-4">
+      <div className="mt-6 rounded-[12px] border border-[#31533d] bg-[#082c18] p-4">
         <div className="flex items-center justify-between gap-4">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -1150,7 +1207,7 @@ function NameStep(props: {
         disabled={!valid}
         onClick={onContinue}
         style={CTA}
-        className="mt-7 h-12 w-full rounded-[10px] bg-[#6cf07f] text-[#04160b] transition hover:brightness-105 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
+        className="mt-7 h-14 w-full rounded-[14px] bg-[#f1f7f3] text-[#082114] transition hover:brightness-105 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
       >
         {!valid
           ? base === "ansem" && !(Number(gradAnsem) > 0)
@@ -1178,6 +1235,9 @@ function ReviewStep({
   connected,
   submitting,
   canSubmit,
+  onEditDetails,
+  onEditHorns,
+  onEditFees,
   onLaunch,
 }: {
   name: string;
@@ -1194,86 +1254,93 @@ function ReviewStep({
   connected: boolean;
   submitting: boolean;
   canSubmit: boolean;
+  onEditDetails: () => void;
+  onEditHorns: () => void;
+  onEditFees: () => void;
   onLaunch: () => void;
 }) {
   const ticker = symbol.trim() ? `$${symbol.trim().toUpperCase()}` : "$TICKER";
   return (
-    <div>
-      <h2 style={HEADING} className="text-white">
+    <div className="mx-auto w-full max-w-[640px]">
+      <h2 style={HEADING} className="text-center text-white">
         Ready to launch
       </h2>
-      <p style={BODY} className="mt-2 text-emerald-100/55">
-        Check the details. This deploys the bonding curve on-chain and cannot be edited after.
+      <p style={BODY} className="mt-2 text-center text-emerald-100/55">
+        One transaction and {ticker} goes live.
       </p>
 
-      <div className="mt-6 space-y-3">
+      <div className="mt-14 space-y-5">
         {/* Token */}
-        <div className="flex items-center gap-3.5 rounded-[14px] border border-white/[0.07] bg-white/[0.02] p-4">
-          {image ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={image} alt="token" className="h-14 w-14 shrink-0 rounded-[12px] object-cover" />
-          ) : (
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[12px] bg-black/40 text-emerald-100/30">
-              <Coins size={24} />
+        <ReviewSection label="Your token" onEdit={onEditDetails}>
+          <div className="flex min-w-0 items-center gap-4">
+            {image ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={image} alt="token" className="h-[72px] w-[72px] shrink-0 rounded-[10px] object-cover" />
+            ) : (
+              <div className="flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-[10px] bg-black/30 text-emerald-100/35">
+                <Coins size={28} />
+              </div>
+            )}
+            <div className="min-w-0">
+              <span style={{ fontFamily: "var(--wiz-sans)" }} className="block truncate text-[18px] font-bold text-white">{ticker}</span>
+              <span className="mt-1 block truncate text-[14px] text-emerald-100/60">{name.trim() || "Your token"}</span>
             </div>
-          )}
-          <div className="min-w-0">
-            <div className="flex items-baseline gap-2">
-              <span style={{ fontFamily: "var(--wiz-sans)" }} className="truncate text-[18px] font-bold text-white">{ticker}</span>
-              <span className="truncate text-[13px] text-emerald-100/50">{name.trim() || "Your token"}</span>
-            </div>
-            <span className="mt-1 inline-flex items-center gap-1 text-[11px] text-[#6cf07f]">
-              <Check size={12} weight="bold" /> Ticker looks available
-            </span>
           </div>
-        </div>
+        </ReviewSection>
 
-        <SummaryRow label="Base denomination">
-          <span className="text-emerald-50">{base === "chanse" ? "CHANSE" : "ANSEM"}</span>
-          {base === "ansem" && Number(gradAnsem) > 0 && (
-            <span className="text-emerald-100/40"> · graduates at {gradAnsem} ANSEM</span>
-          )}
-        </SummaryRow>
+        <ReviewSection label="Launch denomination" onEdit={onEditDetails} compact>
+          <div>
+            <span className="text-[15px] font-semibold text-emerald-50">{base === "chanse" ? "CHANSE" : "ANSEM"}</span>
+            {base === "ansem" && Number(gradAnsem) > 0 && (
+              <span className="ml-2 text-[13px] text-emerald-100/45">Graduates at {gradAnsem} ANSEM</span>
+            )}
+          </div>
+        </ReviewSection>
 
-        <SummaryRow label="Attached Horns">
+        <ReviewSection label="Attached Horns" onEdit={onEditHorns} compact>
           {!attachHorns ? (
-            <span className="text-emerald-100/45">None, regular launch</span>
+            <span className="text-[14px] text-emerald-100/55">None — regular launch</span>
           ) : selectedHorns.length === 0 ? (
-            <span className="text-emerald-50">Reward skim only</span>
+            <span className="text-[14px] text-emerald-50">Reward skim only</span>
           ) : (
-            <span className="flex flex-wrap gap-1.5">
+            <span className="flex flex-wrap gap-2">
               {selectedHorns.map((h) => (
-                <span key={h.slug} className="rounded-[6px] border border-[#6cf07f]/30 bg-[#6cf07f]/10 px-2 py-0.5 text-[12px] text-[#9ff5ae]">
+                <span key={h.slug} className="rounded-[7px] border border-[#6cf07f]/30 bg-[#6cf07f]/10 px-2.5 py-1 text-[12px] text-[#9ff5ae]">
                   {h.name}
                 </span>
               ))}
             </span>
           )}
-        </SummaryRow>
+        </ReviewSection>
 
-        <SummaryRow label="Token type">
+        <ReviewSection label="Token type" onEdit={onEditDetails} compact>
           {teamLaunch ? (
-            <span className="text-emerald-50">
+            <span className="text-[14px] text-emerald-50">
               Team launch
               <span className="text-emerald-100/40"> · metadata governance off</span>
             </span>
           ) : (
-            <span className="text-emerald-100/45">Community, metadata governance on</span>
+            <span className="text-[14px] text-emerald-100/55">Community · metadata governance on</span>
           )}
-        </SummaryRow>
+        </ReviewSection>
 
-        <SummaryRow label="Skim">
+        <ReviewSection label="Fees go to" onEdit={onEditFees} compact>
           {attachHorns ? (
-            <span className="text-emerald-50">
-              {skimPct}% of swap fees
-              <span className="text-emerald-100/40">
-                {" "}· {ansemPct}% ANSEM / {chansePct}% CHANSE
-              </span>
-            </span>
+            <div className="text-[14px] text-emerald-50">
+              Horn Vault · {skimPct}% of swap fees
+              <span className="ml-2 text-emerald-100/45">{ansemPct}% ANSEM / {chansePct}% CHANSE</span>
+            </div>
           ) : (
-            <span className="text-emerald-100/45">No skim, all fees stay in the pool</span>
+            <span className="text-[14px] text-emerald-100/55">No skim — all fees stay in the pool</span>
           )}
-        </SummaryRow>
+        </ReviewSection>
+
+        <div>
+          <p className="mb-2 text-[14px] font-semibold text-emerald-50">Ticker availability</p>
+          <div className="flex min-h-[58px] items-center rounded-[10px] border border-[#31533d] bg-[#082c18] px-4 text-[14px] text-[#6cf07f]">
+            <Check size={16} weight="bold" className="mr-2" /> {ticker} is available
+          </div>
+        </div>
       </div>
 
       <button
@@ -1281,7 +1348,7 @@ function ReviewStep({
         disabled={!canSubmit && connected}
         onClick={onLaunch}
         style={CTA}
-        className="mt-7 h-13 w-full rounded-[10px] bg-[#6cf07f] py-3.5 text-[#04160b] transition hover:brightness-105 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
+        className="mt-12 h-14 w-full rounded-[14px] bg-[#f1f7f3] text-[#082114] transition hover:brightness-105 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40"
       >
         {!connected ? "Connect wallet to launch" : submitting ? "Launching..." : `Launch ${ticker}`}
       </button>
@@ -1294,11 +1361,26 @@ function ReviewStep({
   );
 }
 
-function SummaryRow({ label, children }: { label: string; children: React.ReactNode }) {
+function ReviewSection({
+  label,
+  children,
+  onEdit,
+  compact = false,
+}: {
+  label: string;
+  children: React.ReactNode;
+  onEdit: () => void;
+  compact?: boolean;
+}) {
   return (
-    <div className="flex items-start justify-between gap-4 rounded-[12px] border border-white/[0.06] bg-white/[0.02] px-4 py-3.5 text-[13px]">
-      <span className="shrink-0 text-emerald-100/45">{label}</span>
-      <span className="text-right">{children}</span>
+    <div>
+      <p className="mb-2 text-[14px] font-semibold text-emerald-50">{label}</p>
+      <div className={`flex items-center justify-between gap-4 rounded-[10px] border border-[#31533d] bg-[#082c18] px-4 ${compact ? "min-h-[64px] py-3" : "min-h-[104px] py-4"}`}>
+        <div className="min-w-0 flex-1">{children}</div>
+        <button type="button" onClick={onEdit} aria-label={`Edit ${label}`} className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-emerald-50/80 transition-colors hover:bg-white/[0.06] hover:text-white">
+          <PencilSimple size={22} weight="bold" />
+        </button>
+      </div>
     </div>
   );
 }

@@ -11,7 +11,7 @@ import { useCommandSearch } from "@/components/utoken/command-search";
 
 /** utoken.so-style top chrome: a thin stats line, the main header, and a
  *  horizontal price ticker. Reskinned to ANSEM (ansemchain, CHANSE, Horns). */
-export function TopNav() {
+export function TopNav({ squareCorners = false }: { squareCorners?: boolean }) {
   const { data: tokens } = useTokens();
   const search = useCommandSearch();
 
@@ -65,7 +65,10 @@ export function TopNav() {
   );
 
   return (
-    <header className="sticky top-0 z-30 border-b border-[var(--hairline)] bg-[#161616]/90 backdrop-blur-md">
+    <header
+      className="sticky top-0 z-30 border-b border-[var(--hairline)] bg-[#161616]/90 backdrop-blur-md"
+      style={squareCorners ? { borderRadius: 0 } : undefined}
+    >
       {/* Stats line */}
       <div className="border-b border-[var(--hairline)]">
         <div className="mx-auto flex h-8 w-full max-w-[1440px] items-center gap-6 overflow-x-auto px-4 font-mono text-[11px] text-zinc-500 sm:px-6">
