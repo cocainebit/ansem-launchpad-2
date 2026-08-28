@@ -21,7 +21,7 @@ export function AppShell({ children }: AppShellProps) {
     <CommandSearchProvider>
       <div className="flex min-h-screen flex-col text-zinc-100">
         <TopNav squareCorners={isCreate} />
-        <main className={`flex-1 ${isTerminal ? "bg-[#0d0d0f]" : ""}`}>
+        <main className={`flex-1 ${bare ? "bg-[#0d0d0f]" : ""}`}>
           {bare ? (
             children
           ) : (

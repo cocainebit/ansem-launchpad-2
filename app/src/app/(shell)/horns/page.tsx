@@ -63,7 +63,7 @@ export default function HornsPage() {
                             active ? "bg-[#1c1c1e] ring-1 ring-[#2a2a30]" : "hover:bg-[#161618]"
                           }`}
                         >
-                          <HornLogo horn={h} size={26} />
+                          <HornLogo horn={h} size={30} />
                           <span className="min-w-0 flex-1">
                             <span className={`block truncate text-[13px] font-semibold ${active ? "text-white" : "text-zinc-300"}`}>
                               {h.name}
@@ -128,12 +128,13 @@ export default function HornsPage() {
 function HornLogo({ horn, size }: { horn: Horn; size: number }) {
   if (!horn.icon) return null;
   return (
-    <span
-      className="shrink-0 overflow-hidden rounded-md border border-[var(--hairline)] bg-[#141416]"
-      style={{ width: size, height: size }}
-    >
+    <span className="shrink-0" style={{ width: size, height: size }}>
       {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img src={horn.icon} alt="" className="h-full w-full object-cover" />
+      <img
+        src={horn.icon}
+        alt=""
+        className="h-full w-full object-contain drop-shadow-[0_2px_6px_rgba(0,0,0,0.5)]"
+      />
     </span>
   );
 }
@@ -142,7 +143,7 @@ function HornDetail({ horn }: { horn: Horn }) {
   return (
     <section className="rounded-2xl border border-[#1e1e22] bg-[#0e0e10]/80 p-5">
       <div className="flex items-start gap-3">
-        <HornLogo horn={horn} size={40} />
+        <HornLogo horn={horn} size={64} />
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <h2 className="font-display text-[20px] font-semibold tracking-tight text-white">{horn.name}</h2>
