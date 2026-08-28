@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useMemo, useRef, useState } from "react";
+import { Horse } from "@phosphor-icons/react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -49,6 +50,13 @@ export function CreateTokenForm() {
   const [imgBusy, setImgBusy] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  // Wizard: 1 = customize the coin, 2 = launch config (denomination + Horns).
+  const [step, setStep] = useState<1 | 2>(1);
+  // Horns: attach a fee-skim Horn at graduation, split ANSEM/CHANSE.
+  const [attachHorns, setAttachHorns] = useState(true);
+  const [skimPct, setSkimPct] = useState(3); // % of each swap fee -> Horn Vault (0..10)
+  const [ansemPct, setAnsemPct] = useState(50); // share of the skim to the ANSEM sink
+
   const handleFile = useCallback(async (file: File | null | undefined) => {
     if (!file) return;
     if (!file.type.startsWith("image/")) {
@@ -65,15 +73,18 @@ export function CreateTokenForm() {
     }
   }, []);
 
+  const step1Valid = useMemo(
+    () => name.trim().length > 0 && symbol.trim().length > 0 && description.trim().length > 0,
+    [name, symbol, description],
+  );
+
   const canSubmit = useMemo(
     () =>
       Boolean(wallet.connected) &&
       !submitting &&
-      name.trim().length > 0 &&
-      symbol.trim().length > 0 &&
-      description.trim().length > 0 &&
+      step1Valid &&
       (base === "chanse" || Number(gradAnsem) > 0),
-    [wallet.connected, submitting, name, symbol, description, base, gradAnsem],
+    [wallet.connected, submitting, step1Valid, base, gradAnsem],
   );
 
   async function submit() {
@@ -97,6 +108,9 @@ export function CreateTokenForm() {
           base === "ansem"
             ? String(Math.round(Number(gradAnsem) * 1_000_000))
             : undefined,
+        horn: attachHorns
+          ? { skimBps: Math.round(skimPct * 100), ansemBps: Math.round(ansemPct * 100) }
+          : undefined,
       });
       toast.success("Token launched", {
         id: "launch",
@@ -117,10 +131,22 @@ export function CreateTokenForm() {
   }
 
   const field =
-    "h-11 w-full rounded-xl border border-[#29292d] bg-[#161618] px-4 text-[14px] text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-[#16a34a]";
+    "h-11 w-full rounded-[6px] border border-[#1e1e22] bg-[#131316] px-3.5 text-[14px] text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-[#2a2a30]";
+
+  const skimBps = Math.round(skimPct * 100);
+  const chansePct = 100 - ansemPct;
 
   return (
     <div className="flex flex-col gap-5">
+      {/* Stepper */}
+      <div className="flex items-center gap-2">
+        <StepPip n={1} label="Customize" active={step === 1} done={step > 1} onClick={() => setStep(1)} />
+        <span className="h-px flex-1 bg-[#1e1e22]" />
+        <StepPip n={2} label="Launch" active={step === 2} done={false} onClick={() => step1Valid && setStep(2)} />
+      </div>
+
+      {step === 1 ? (
+        <>
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label className="mb-2 block text-[13px] font-medium text-zinc-400">Name</label>
@@ -143,14 +169,14 @@ export function CreateTokenForm() {
           onDragLeave={() => setDragOver(false)}
           onDrop={(e) => { e.preventDefault(); setDragOver(false); void handleFile(e.dataTransfer.files?.[0]); }}
           className={`flex cursor-pointer items-center gap-4 rounded-xl border border-dashed px-4 py-4 transition ${
-            dragOver ? "border-[#16a34a] bg-[#16a34a]/10" : "border-[#3a3a40] bg-[#161618] hover:border-[#4a4a52]"
+            dragOver ? "border-[#6cf07f] bg-[#6cf07f]/10" : "border-[#2a2a30] bg-[#131316] hover:border-[#3a3a42]"
           }`}
         >
           {image ? (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={image} alt="token" className="h-14 w-14 shrink-0 rounded-lg object-cover" />
           ) : (
-            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-[#202023] text-[22px] text-zinc-600">＋</div>
+            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-lg bg-[#1a1a1e] text-[22px] text-zinc-600">＋</div>
           )}
           <div className="min-w-0 text-[13px]">
             <p className="font-medium text-zinc-200">
@@ -177,7 +203,7 @@ export function CreateTokenForm() {
       <div>
         <label className="mb-2 block text-[13px] font-medium text-zinc-400">Description</label>
         <textarea
-          className="w-full resize-none rounded-xl border border-[#29292d] bg-[#161618] px-4 py-3 text-[14px] text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-[#16a34a]"
+          className="w-full resize-none rounded-[6px] border border-[#1e1e22] bg-[#131316] px-3.5 py-3 text-[14px] text-zinc-100 outline-none placeholder:text-zinc-600 focus:border-[#2a2a30]"
           rows={3}
           value={description}
           onChange={(e) => setDescription(e.target.value)}
@@ -191,6 +217,17 @@ export function CreateTokenForm() {
         <input className={field} value={telegram} onChange={(e) => setTelegram(e.target.value)} placeholder="Telegram (optional)" />
       </div>
 
+      <button
+        type="button"
+        disabled={!step1Valid}
+        onClick={() => setStep(2)}
+        className="btn-white mt-1 h-12 rounded-[6px] font-display text-[13px] uppercase tracking-[0.1em] disabled:opacity-40"
+      >
+        Next — launch settings
+      </button>
+        </>
+      ) : (
+        <>
       <div>
         <label className="mb-2 block text-[13px] font-medium text-zinc-400">Launch denomination</label>
         <div className="flex gap-2">
@@ -199,10 +236,10 @@ export function CreateTokenForm() {
               key={b}
               type="button"
               onClick={() => setBase(b)}
-              className={`flex-1 rounded-xl px-4 py-3 text-[14px] font-semibold transition ${
+              className={`flex-1 rounded-[6px] px-4 py-3 font-display text-[13px] font-bold uppercase tracking-[0.08em] transition ${
                 base === b
-                  ? "bg-[#16a34a] text-white"
-                  : "border border-[#29292d] bg-[#161618] text-zinc-300 hover:text-white"
+                  ? "bg-[#6cf07f] text-[#0a0a0b]"
+                  : "border border-[#1e1e22] bg-[#131316] text-zinc-400 hover:text-white"
               }`}
             >
               {b === "chanse" ? "CHANSE" : "ANSEM"}
@@ -234,18 +271,149 @@ export function CreateTokenForm() {
         </div>
       ) : null}
 
-      <button
-        type="button"
-        disabled={!canSubmit && wallet.connected}
-        onClick={submit}
-        className="mt-1 h-12 rounded-xl bg-[#16a34a] text-[15px] font-bold text-white transition hover:bg-[#15803d] disabled:opacity-40"
-      >
-        {!wallet.connected
-          ? "Connect wallet"
-          : submitting
-            ? "Launching…"
-            : "Launch token"}
-      </button>
+      {/* Horns config */}
+      <div className="rounded-xl border border-[#1e1e22] bg-[#0c0c0e]/80 p-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Horse size={16} weight="fill" className="text-[#6cf07f]" />
+            <span className="font-display text-[13px] font-semibold uppercase tracking-[0.1em] text-zinc-100">
+              Horns
+            </span>
+            <span className="rounded-[4px] border border-[#26262b] px-1.5 py-0.5 font-mono text-[9px] uppercase text-zinc-500">
+              at graduation
+            </span>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={attachHorns}
+            onClick={() => setAttachHorns((v) => !v)}
+            className={`relative h-6 w-11 shrink-0 rounded-full transition-colors ${attachHorns ? "bg-[#6cf07f]" : "bg-[#26262b]"}`}
+          >
+            <span
+              className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition-transform ${attachHorns ? "translate-x-[22px]" : "translate-x-0.5"}`}
+            />
+          </button>
+        </div>
+
+        {attachHorns ? (
+          <div className="mt-4 space-y-4">
+            {/* Skim */}
+            <div>
+              <div className="flex items-center justify-between text-[12px]">
+                <span className="text-zinc-400">Skim to Horn Vault</span>
+                <span className="mono font-semibold text-[#6cf07f]">{skimPct}% of swap fees</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={10}
+                step={1}
+                value={skimPct}
+                onChange={(e) => setSkimPct(Number(e.target.value))}
+                className="ansem-range mt-2 w-full"
+              />
+            </div>
+
+            {/* Split */}
+            <div>
+              <div className="flex items-center justify-between text-[12px]">
+                <span className="text-zinc-400">Sink split</span>
+                <span className="mono font-semibold text-zinc-200">
+                  <span className="text-[#6cf07f]">{ansemPct}%</span> ANSEM /{" "}
+                  <span className="text-[#8ab4ff]">{chansePct}%</span> CHANSE
+                </span>
+              </div>
+              <div className="mt-2 flex h-2 overflow-hidden rounded-full">
+                <span style={{ width: `${ansemPct}%`, background: "#6cf07f" }} className="block h-full" />
+                <span style={{ width: `${chansePct}%`, background: "#8ab4ff" }} className="block h-full" />
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={5}
+                value={ansemPct}
+                onChange={(e) => setAnsemPct(Number(e.target.value))}
+                className="ansem-range mt-2 w-full"
+              />
+            </div>
+
+            <p className="text-[11px] leading-4 text-zinc-600">
+              When your coin graduates to the AMM, {skimPct}% of every swap fee ({skimBps} bps
+              of the fee) is skimmed to the Horn Vault and split to ANSEM / CHANSE stakers.
+              Horns is in preview — this activates with the Horns program.
+            </p>
+          </div>
+        ) : (
+          <p className="mt-3 text-[12px] text-zinc-500">
+            No Horn attached — all swap fees stay with the pool. You can still launch;
+            Horns can only be set at launch.
+          </p>
+        )}
+      </div>
+
+      {/* Step 2 nav */}
+      <div className="mt-1 flex gap-2">
+        <button
+          type="button"
+          onClick={() => setStep(1)}
+          className="h-12 shrink-0 rounded-[6px] border border-[#26262b] bg-transparent px-5 font-display text-[13px] uppercase tracking-[0.1em] text-zinc-300 transition-colors hover:border-[#3a3a42] hover:text-white"
+        >
+          Back
+        </button>
+        <button
+          type="button"
+          disabled={!canSubmit && wallet.connected}
+          onClick={submit}
+          className="btn-white h-12 flex-1 rounded-[6px] font-display text-[13px] uppercase tracking-[0.1em] disabled:opacity-40"
+        >
+          {!wallet.connected ? "Connect wallet" : submitting ? "Launching…" : "Launch token"}
+        </button>
+      </div>
+        </>
+      )}
     </div>
+  );
+}
+
+function StepPip({
+  n,
+  label,
+  active,
+  done,
+  onClick,
+}: {
+  n: number;
+  label: string;
+  active: boolean;
+  done: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex items-center gap-2"
+    >
+      <span
+        className={`flex h-6 w-6 items-center justify-center rounded-full font-mono text-[11px] font-semibold transition-colors ${
+          active
+            ? "bg-[#6cf07f] text-[#0a0a0b]"
+            : done
+              ? "border border-[#2f7d3f] bg-[#6cf07f]/10 text-[#6cf07f]"
+              : "border border-[#26262b] bg-[#131316] text-zinc-500"
+        }`}
+      >
+        {done ? "✓" : n}
+      </span>
+      <span
+        className={`font-display text-[11px] font-semibold uppercase tracking-[0.12em] ${
+          active ? "text-white" : "text-zinc-500"
+        }`}
+      >
+        {label}
+      </span>
+    </button>
   );
 }

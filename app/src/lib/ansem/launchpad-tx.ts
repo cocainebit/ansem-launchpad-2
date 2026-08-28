@@ -44,6 +44,14 @@ export interface CreateTokenArgs {
   baseDenom: string;
   /** Required (utoken) when baseDenom === "uansem": the ANSEM graduation raise. */
   baseGradThreshold?: string;
+  /**
+   * Optional Horns config applied when the coin graduates to the AMM.
+   * `skimBps` = fraction of each swap fee (bps, 0..1000) diverted to Horn Vault
+   * stakers; `ansemBps` = share of that skim routed to the ANSEM sink (rest to
+   * CHANSE). Only sent when a Horn is attached; the field is ignored by a
+   * launchpad that predates Horns, so existing launches are unaffected.
+   */
+  horn?: { skimBps: number; ansemBps: number };
 }
 
 export async function createToken(
@@ -61,6 +69,9 @@ export async function createToken(
       base_denom: args.baseDenom,
       ...(args.baseDenom === "uansem" && args.baseGradThreshold
         ? { base_grad_threshold: args.baseGradThreshold }
+        : {}),
+      ...(args.horn
+        ? { horn: { skim_bps: args.horn.skimBps, ansem_bps: args.horn.ansemBps } }
         : {}),
     },
   };

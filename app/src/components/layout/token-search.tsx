@@ -34,10 +34,10 @@ export function TokenSearch() {
   }, [q, tokens]);
 
   return (
-    <div className="relative w-full max-w-xl">
+    <div className="relative w-full max-w-md">
       <MagnifyingGlass
-        size={18}
-        className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-zinc-500"
+        size={15}
+        className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-zinc-600"
       />
       <input
         ref={inputRef}
@@ -48,26 +48,26 @@ export function TokenSearch() {
         }}
         onFocus={() => setOpen(true)}
         onBlur={() => window.setTimeout(() => setOpen(false), 150)}
-        placeholder="Search for tokens or traders..."
-        className="h-10 w-full rounded-xl border border-[#1c1c1f] bg-[#151517] pl-11 pr-12 text-sm font-medium text-zinc-100 placeholder:font-semibold placeholder:text-zinc-600 focus:border-[#34343a] focus:outline-none"
+        placeholder="search coins..."
+        className="h-9 w-full rounded-[4px] border border-[#1a1a1e] bg-[#101012] pl-9 pr-9 text-[13px] text-zinc-100 placeholder:text-zinc-600 focus:border-[#2a2a30] focus:outline-none"
       />
-      <span className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 rounded-md border border-[#29292d] bg-[#1b1b1e] px-1.5 py-0.5 text-[10px] font-semibold text-zinc-500">
+      <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 rounded-[3px] border border-[#1e1e22] bg-[#161619] px-1.5 py-0.5 font-mono text-[10px] text-zinc-600">
         /
       </span>
       {open && results.length > 0 && (
-        <div className="absolute left-0 right-0 top-12 z-30 overflow-hidden rounded-xl border border-[#1c1c1f] bg-[#111113] shadow-xl">
+        <div className="absolute left-0 right-0 top-12 z-30 overflow-hidden rounded-xl border border-[#1a1a1e] bg-[#0e0e10]/80 shadow-xl">
           {results.map((t) => (
             <Link
               key={t.address}
               href={`/token/${t.address}`}
               onClick={() => setOpen(false)}
-              className="flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-[#151517]"
+              className="flex items-center gap-3 px-3 py-2.5 transition-colors hover:bg-[#131316]"
             >
               {t.image ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={t.image} alt="" className="h-8 w-8 shrink-0 rounded-lg object-cover" />
               ) : (
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#202024] text-xs font-bold text-zinc-400">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[#1a1a1e] text-xs font-bold text-zinc-400">
                   {t.symbol?.[0]}
                 </span>
               )}

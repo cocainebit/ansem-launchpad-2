@@ -7,7 +7,7 @@ export function TradingChartSkeleton({ terminal = false }: { terminal?: boolean 
         <Skeleton className="h-6 w-24" />
         <Skeleton className="h-9 w-48" />
       </div>}
-      <Skeleton className={terminal ? "h-full min-h-[360px] w-full rounded-none bg-[#151517]" : "h-[400px] w-full rounded-2xl"} />
+      <Skeleton className={terminal ? "h-full min-h-[360px] w-full rounded-none bg-[#131316]" : "h-[400px] w-full rounded-2xl"} />
     </div>
   );
 }

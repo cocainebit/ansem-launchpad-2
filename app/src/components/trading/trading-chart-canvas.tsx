@@ -110,16 +110,28 @@ export function TradingChartCanvas({
     const candleData: CandlestickData<UTCTimestamp>[] = [];
     const volumeData: HistogramData<UTCTimestamp>[] = [];
 
+    let prevClose: number | null = null;
     for (const candle of data.candles) {
       const ts = Math.floor(
         new Date(candle.time).getTime() / 1000,
       ) as UTCTimestamp;
       timestamps.push(ts);
 
-      const open = (Number(candle.open) / 1e6) * priceMul;
-      const high = (Number(candle.high) / 1e6) * priceMul;
-      const low = (Number(candle.low) / 1e6) * priceMul;
+      const rawOpen = (Number(candle.open) / 1e6) * priceMul;
+      const rawHigh = (Number(candle.high) / 1e6) * priceMul;
+      const rawLow = (Number(candle.low) / 1e6) * priceMul;
       const close = (Number(candle.close) / 1e6) * priceMul;
+
+      // Carry the open forward from the previous candle's close so the series
+      // is continuous and each candle forms a real body. Without this, a bucket
+      // with a single trade has open===high===low===close and draws as an
+      // invisible flat doji — the chart looked empty even with trades. The
+      // high/low are widened to include the carried open so the body is fully
+      // enclosed.
+      const open = prevClose ?? rawOpen;
+      const high = Math.max(rawHigh, open, close);
+      const low = Math.min(rawLow, open, close);
+      prevClose = close;
 
       closes.push(close);
       candleData.push({ time: ts, open, high, low, close });
@@ -265,6 +277,17 @@ export function TradingChartCanvas({
     if (!computed.candleData.length) return;
 
     candleSeriesRef.current.setData(computed.candleData);
+
+    // The last-value price line tracks the latest close automatically; recolor
+    // it to the last candle's direction so it reads green on an up close and red
+    // on a down close instead of being pinned to one color.
+    const lastCandle = computed.candleData[computed.candleData.length - 1];
+    if (lastCandle) {
+      candleSeriesRef.current.applyOptions({
+        priceLineColor:
+          lastCandle.close >= lastCandle.open ? PRICE_UP_COLOR : PRICE_DOWN_COLOR,
+      });
+    }
 
     // Volume
     volumeSeriesRef.current.setData(

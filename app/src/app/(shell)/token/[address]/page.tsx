@@ -11,6 +11,7 @@ import { useTokenHolders } from "@/hooks/use-token-holders";
 import { useCandles } from "@/hooks/use-candles";
 import { TradingChartSkeleton } from "@/components/trading/trading-chart-skeleton";
 import { FloorlaunchTradePanel } from "@/components/trading/floorlaunch-trade-panel";
+import { HornsFeeSplitPanel, HornVaultPanel } from "@/components/trading/horns-panels";
 import type { Timeframe, TokenListItem, TokenTrade } from "@/lib/api";
 import { DEFAULT_TOKEN_SUPPLY } from "@/lib/chain-config";
 import { explorerUrl, solscanUrl } from "@/lib/floorlaunch/config";
@@ -81,7 +82,7 @@ export default function TokenDetailPage() {
   if (isLoading) return <TerminalSkeleton />;
   if (error || !token) {
     return (
-      <div className="flex min-h-[calc(100vh-64px)] items-center justify-center bg-[#0d0d0f] text-red-300">
+      <div className="flex min-h-[calc(100vh-64px)] items-center justify-center bg-[#0a0a0b] text-red-300">
         Token not found
       </div>
     );
@@ -107,29 +108,29 @@ export default function TokenDetailPage() {
   };
 
   return (
-    <div className="terminal-page flex min-h-[calc(100vh-64px)] min-w-0 flex-col bg-[#0d0d0f] text-zinc-100 xl:grid xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_360px]">
-      <main className="flex min-w-0 flex-col bg-[#0d0d0f]">
-        <div className="flex h-[70px] shrink-0 items-center justify-between gap-6 overflow-x-auto border-b border-[#17171a] px-4 py-2">
+    <div className="terminal-page flex min-h-[calc(100vh-64px)] min-w-0 flex-col bg-[#0a0a0b] text-zinc-100 xl:grid xl:grid-cols-[minmax(0,1fr)_340px] 2xl:grid-cols-[minmax(0,1fr)_360px]">
+      <main className="flex min-w-0 flex-col bg-[#0a0a0b]">
+        <div className="flex h-[70px] shrink-0 items-center justify-between gap-6 overflow-x-auto border-b border-[#161619] px-4 py-2">
           <div className="flex shrink-0 items-center gap-2.5">
             {token.image ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={token.image}
                 alt={token.name ?? token.symbol ?? "Token"}
-                className="h-11 w-11 rounded-full border border-[#34343a] bg-[#202024] object-cover"
+                className="h-11 w-11 rounded-full border border-[#2a2a30] bg-[#1a1a1e] object-cover"
               />
             ) : (
-              <span className="flex h-11 w-11 items-center justify-center rounded-full border border-[#34343a] bg-[#202024] text-sm text-zinc-400">
+              <span className="flex h-11 w-11 items-center justify-center rounded-full border border-[#2a2a30] bg-[#1a1a1e] text-sm text-zinc-400">
                 {token.symbol?.[0]}
               </span>
             )}
             <div className="min-w-0">
               <div className="flex h-8 items-center gap-1.5">
                 <p className="max-w-52 truncate text-[15px] font-bold leading-none text-zinc-100">{token.name}</p>
-                <span className="shrink-0 rounded border border-[#34343a] bg-[#1b1b1e] px-1.5 py-1 text-[9px] font-medium uppercase tracking-wide text-zinc-500">
+                <span className="shrink-0 rounded border border-[#2a2a30] bg-[#161619] px-1.5 py-1 text-[9px] font-medium uppercase tracking-wide text-zinc-500">
                   {token.market.dbcPool ? "Meteora DBC" : token.graduated ? "AMM" : "Curve"}
                 </span>
-                <span className="mx-1 h-5 w-px bg-[#29292d]" />
+                <span className="mx-1 h-5 w-px bg-[#1e1e22]" />
                 <div className="flex shrink-0 items-center gap-1">
                   <SocialLink href={token.listing.links?.website} label="Website">
                     <GlobeSimple size={15} />
@@ -147,7 +148,7 @@ export default function TokenDetailPage() {
               </div>
               <div className="flex h-5 items-center gap-2 text-[11px] font-medium text-zinc-500">
                 <span className="max-w-40 truncate">{collectibleName}</span>
-                <span className="h-4 w-px bg-[#29292d]" />
+                <span className="h-4 w-px bg-[#1e1e22]" />
                 <CopyValue value={token.mint} />
               </div>
             </div>
@@ -161,7 +162,7 @@ export default function TokenDetailPage() {
             <StatTile label="Holders" value={stats.holders} />
           </div>
         </div>
-        <div className="flex shrink-0 items-center gap-1 border-b border-[#1c1c1f] px-4 py-1.5 text-zinc-400">
+        <div className="flex shrink-0 items-center gap-1 border-b border-[#1a1a1e] px-4 py-1.5 text-zinc-400">
           {TIMEFRAMES.map(({ value, label }) => (
             <button
               key={value}
@@ -169,8 +170,8 @@ export default function TokenDetailPage() {
               onClick={() => setTimeframe(value)}
               className={
                 timeframe === value
-                  ? "rounded-md bg-[#29292d] px-2.5 py-1 text-xs font-semibold text-zinc-100"
-                  : "rounded-md px-2.5 py-1 text-xs font-semibold hover:bg-[#1b1b1e] hover:text-zinc-100"
+                  ? "rounded-md bg-[#1e1e22] px-2.5 py-1 text-xs font-semibold text-zinc-100"
+                  : "rounded-md px-2.5 py-1 text-xs font-semibold hover:bg-[#161619] hover:text-zinc-100"
               }
             >
               {label}
@@ -201,8 +202,10 @@ export default function TokenDetailPage() {
           onResizeEnd={stopInformationResize}
         />
       </main>
-      <aside className="min-w-0 space-y-3 bg-[#0d0d0f] p-4">
+      <aside className="min-w-0 space-y-3 border-l border-[#141417] bg-[#0a0a0b] p-4">
         <FloorlaunchTradePanel token={token} />
+        <HornsFeeSplitPanel token={token} />
+        <HornVaultPanel token={token} />
         <Overview token={token} trades={visibleTrades} />
       </aside>
     </div>
@@ -255,10 +258,10 @@ function TokenInformationPanel({
         onPointerCancel={onResizeEnd}
         className="group flex h-2.5 shrink-0 touch-none cursor-row-resize items-center justify-center"
       >
-        <span className="h-1 w-10 rounded-full bg-[#34343a] transition-colors group-hover:bg-zinc-500 group-active:bg-[#6cef4b]" />
+        <span className="h-1 w-10 rounded-full bg-[#2a2a30] transition-colors group-hover:bg-zinc-500 group-active:bg-[#6cef4b]" />
       </div>
-      <section className="mx-2 mb-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-[#24242a] bg-[#0d0d0f]">
-      <div className="flex h-10 shrink-0 items-center gap-5 border-b border-[#202026] bg-[#0a0a0e] px-3">
+      <section className="mx-2 mb-2 flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-[#1e1e22] bg-[#0a0a0b]">
+      <div className="flex h-10 shrink-0 items-center gap-5 border-b border-[#1a1a1e] bg-[#0a0a0b] px-3">
         <InformationTabButton active={tab === "holders"} onClick={() => setTab("holders")}>
           Holders{visibleHolders.length ? ` (${visibleHolders.length})` : ""}
         </InformationTabButton>
@@ -328,11 +331,11 @@ function HoldersTable({
   const supplyMicro = DEFAULT_TOKEN_SUPPLY * 1_000_000;
   return (
     <table className="w-full min-w-[600px] text-[13px]">
-      <thead className="sticky top-0 z-10 bg-[#0d0d0f] text-zinc-600">
+      <thead className="sticky top-0 z-10 bg-[#0a0a0b] text-zinc-600">
         <tr>
-          <th className="border-b border-[#1d1d23] px-4 py-2 text-left text-xs font-medium">Trader</th>
-          <th className="border-b border-[#1d1d23] px-4 py-2 text-right text-xs font-medium">Position</th>
-          <th className="border-b border-[#1d1d23] px-4 py-2 text-right text-xs font-medium">Supply</th>
+          <th className="border-b border-[#1e1e22] px-4 py-2 text-left text-xs font-medium">Trader</th>
+          <th className="border-b border-[#1e1e22] px-4 py-2 text-right text-xs font-medium">Position</th>
+          <th className="border-b border-[#1e1e22] px-4 py-2 text-right text-xs font-medium">Supply</th>
         </tr>
       </thead>
       <tbody>
@@ -372,7 +375,7 @@ function WalletAvatar({ address }: { address: string }) {
   return (
     <span
       title={address}
-      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#202027] text-zinc-500 ring-1 ring-inset ring-white/10"
+      className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#1a1a1e] text-zinc-500 ring-1 ring-inset ring-white/10"
     >
       <User size={18} weight="fill" />
     </span>
@@ -386,14 +389,14 @@ function TransactionsTable({ trades, symbol, baseLabel }: { trades: TokenTrade[]
 
   return (
     <table className="w-full min-w-[720px] text-[13px]">
-      <thead className="sticky top-0 z-10 bg-[#0d0d0f] text-zinc-600">
+      <thead className="sticky top-0 z-10 bg-[#0a0a0b] text-zinc-600">
         <tr>
-          <th className="border-b border-[#1d1d23] px-4 py-2 text-left text-xs font-medium">Time</th>
-          <th className="border-b border-[#1d1d23] px-4 py-2 text-left text-xs font-medium">Type</th>
-          <th className="border-b border-[#1d1d23] px-4 py-2 text-right text-xs font-medium">{baseLabel}</th>
-          <th className="border-b border-[#1d1d23] px-4 py-2 text-right text-xs font-medium">{symbol}</th>
-          <th className="border-b border-[#1d1d23] px-4 py-2 text-left text-xs font-medium">Trader</th>
-          <th className="border-b border-[#1d1d23] px-4 py-2 text-right text-xs font-medium">Txn</th>
+          <th className="border-b border-[#1e1e22] px-4 py-2 text-left text-xs font-medium">Time</th>
+          <th className="border-b border-[#1e1e22] px-4 py-2 text-left text-xs font-medium">Type</th>
+          <th className="border-b border-[#1e1e22] px-4 py-2 text-right text-xs font-medium">{baseLabel}</th>
+          <th className="border-b border-[#1e1e22] px-4 py-2 text-right text-xs font-medium">{symbol}</th>
+          <th className="border-b border-[#1e1e22] px-4 py-2 text-left text-xs font-medium">Trader</th>
+          <th className="border-b border-[#1e1e22] px-4 py-2 text-right text-xs font-medium">Txn</th>
         </tr>
       </thead>
       <tbody>
@@ -450,7 +453,7 @@ function StatTile({
   return (
     <div
       className={`min-w-[88px] shrink-0 px-3 py-1.5 ${
-        primary ? "bg-transparent" : "rounded-lg bg-[#151517]"
+        primary ? "bg-transparent" : "rounded-lg bg-[#131316]"
       }`}
     >
       <p className="text-center text-[11px] font-medium text-zinc-500">{label}</p>
@@ -469,7 +472,7 @@ function TokenSummary({ token, price }: { token: TokenListItem; price: number })
   const volumeUsd =
     (Number(token.volume_24h) / 1_000_000) * token.market.solUsd;
   return (
-    <section className="rounded-2xl border border-[#29292d] bg-[#151517] px-4 py-3">
+    <section className="rounded-2xl border border-[#1e1e22] bg-[#131316] px-4 py-3">
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2.5">
           {token.image ? (
@@ -480,7 +483,7 @@ function TokenSummary({ token, price }: { token: TokenListItem; price: number })
               className="h-9 w-9 shrink-0 rounded-lg object-cover"
             />
           ) : (
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#29292d] text-sm">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#1e1e22] text-sm">
               {token.symbol?.[0]}
             </span>
           )}
@@ -489,7 +492,7 @@ function TokenSummary({ token, price }: { token: TokenListItem; price: number })
             <p className="text-xs text-zinc-500">${token.symbol}</p>
           </div>
         </div>
-        <span className="shrink-0 rounded-full border border-[#34343a] bg-[#202024] px-2 py-0.5 text-[10px] font-semibold text-zinc-400">
+        <span className="shrink-0 rounded-full border border-[#2a2a30] bg-[#1a1a1e] px-2 py-0.5 text-[10px] font-semibold text-zinc-400">
           {token.market.dbcPool ? "METEORA DBC" : token.graduated ? "AMM" : "CURVE"}
         </span>
       </div>
@@ -555,7 +558,7 @@ function Overview({ token, trades }: { token: TokenListItem; trades: TokenTrade[
   const sellers = new Set(sells.map((trade) => trade.trader)).size;
 
   return (
-    <section className="relative rounded-xl border border-[#29292d] bg-[#101012] px-3 pb-4 pt-3">
+    <section className="relative rounded-xl border border-[#1e1e22] bg-[#0e0e10]/80 px-3 pb-4 pt-3">
       <h2 className="text-sm font-semibold text-zinc-100">About {token.name}</h2>
       <p className="mt-1.5 line-clamp-3 text-[11px] leading-[15px] text-zinc-400">
         {token.description?.trim() || `Trade ${token.name} against its live collectible market.`}
@@ -572,8 +575,8 @@ function Overview({ token, trades }: { token: TokenListItem; trades: TokenTrade[
               onClick={() => setRange(item.value)}
               className={`h-[46px] rounded-lg border px-1 py-1.5 text-center transition-colors ${
                 active
-                  ? "border-[#34343a] bg-[#202024]"
-                  : "border-[#29292d] bg-transparent hover:bg-[#151517]"
+                  ? "border-[#2a2a30] bg-[#1a1a1e]"
+                  : "border-[#1e1e22] bg-transparent hover:bg-[#131316]"
               }`}
             >
               <span className="block text-[10px] font-semibold leading-3 text-zinc-400">{item.label}</span>
@@ -601,7 +604,7 @@ function Overview({ token, trades }: { token: TokenListItem; trades: TokenTrade[
         inert={!expanded}
       >
         <div className="min-h-0 overflow-hidden">
-          <div className="border-t border-[#24242a] pt-3">
+          <div className="border-t border-[#1e1e22] pt-3">
             <div className="flex flex-wrap gap-1.5">
               <OverviewLink href={token.listing.links?.website} label="Website">
                 <GlobeSimple size={12} />
@@ -631,7 +634,7 @@ function Overview({ token, trades }: { token: TokenListItem; trades: TokenTrade[
         type="button"
         onClick={() => setExpanded((value) => !value)}
         aria-expanded={expanded}
-        className="absolute -bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-[#202024] px-3 py-1 text-[10px] font-semibold text-zinc-400 transition-colors hover:bg-[#29292f] hover:text-zinc-100"
+        className="absolute -bottom-3 left-1/2 -translate-x-1/2 rounded-full bg-[#1a1a1e] px-3 py-1 text-[10px] font-semibold text-zinc-400 transition-colors hover:bg-[#29292f] hover:text-zinc-100"
       >
         {expanded ? "View less" : "View more"}
       </button>
@@ -648,7 +651,7 @@ function OverviewLink({
   label: string;
   children: React.ReactNode;
 }) {
-  const className = "inline-flex h-7 items-center gap-1.5 rounded-lg border border-[#303038] bg-[#18181d] px-2.5 text-[11px] font-semibold text-zinc-200";
+  const className = "inline-flex h-7 items-center gap-1.5 rounded-lg border border-[#2a2a30] bg-[#151518] px-2.5 text-[11px] font-semibold text-zinc-200";
   if (!href) {
     return <span className={`${className} cursor-not-allowed opacity-40`}>{children}{label}</span>;
   }
@@ -731,7 +734,7 @@ function SocialLink({
         title={`${label} link unavailable for this token`}
         aria-label={`${label} link unavailable`}
         aria-disabled="true"
-        className="flex h-6 w-6 cursor-not-allowed items-center justify-center rounded bg-[#19191f] text-zinc-600"
+        className="flex h-6 w-6 cursor-not-allowed items-center justify-center rounded bg-[#151518] text-zinc-600"
       >
         {children}
       </span>
@@ -745,7 +748,7 @@ function SocialLink({
       rel="noopener noreferrer"
       title={label}
       aria-label={label}
-      className="flex h-6 w-6 items-center justify-center rounded bg-[#19191f] text-zinc-400 transition-colors hover:bg-[#24242b] hover:text-zinc-100"
+      className="flex h-6 w-6 items-center justify-center rounded bg-[#151518] text-zinc-400 transition-colors hover:bg-[#24242b] hover:text-zinc-100"
     >
       {children}
     </a>
@@ -845,9 +848,9 @@ function relativeTime(value: string): string {
 
 function TerminalSkeleton() {
   return (
-    <div className="grid min-h-[calc(100vh-64px)] bg-[#0d0d0f] xl:grid-cols-[minmax(0,1fr)_360px]">
-      <Skeleton className="h-full rounded-none bg-[#151517]" />
-      <Skeleton className="h-full rounded-none bg-[#151517]" />
+    <div className="grid min-h-[calc(100vh-64px)] bg-[#0a0a0b] xl:grid-cols-[minmax(0,1fr)_360px]">
+      <Skeleton className="h-full rounded-none bg-[#131316]" />
+      <Skeleton className="h-full rounded-none bg-[#131316]" />
     </div>
   );
 }

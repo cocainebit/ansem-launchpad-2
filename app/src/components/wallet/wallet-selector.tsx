@@ -67,7 +67,7 @@ export function WalletSelector({
       <PopoverContent
         side="bottom"
         align="end"
-        className="z-[100] w-[22rem] rounded-2xl border-[#3a3a40] bg-[#151517] p-4 text-zinc-100 shadow-2xl"
+        className="z-[100] w-[22rem] rounded-2xl border-[#2a2a30] bg-[#131316] p-4 text-zinc-100 shadow-2xl"
       >
         <h3 className="text-base font-semibold">Connect a Solana wallet</h3>
         <p className="mb-4 mt-1 text-sm text-zinc-400">
@@ -82,7 +82,7 @@ export function WalletSelector({
               <Button
                 key={adapter.name}
                 variant="outline"
-                className="h-14 w-full justify-between border-[#3a3a40] bg-[#1d1d20] text-zinc-100 hover:bg-[#242428]"
+                className="h-14 w-full justify-between border-[#2a2a30] bg-[#1d1d20] text-zinc-100 hover:bg-[#242428]"
                 disabled={connecting || pending !== null}
                 onClick={() =>
                   choose(adapter.name, readyState, adapter.url)

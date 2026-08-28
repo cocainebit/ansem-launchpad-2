@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState, type MouseEvent } from "react";
 import { formatDistanceToNow } from "date-fns";
 import { ArrowUpRight, Check, CopySimple } from "@phosphor-icons/react";
@@ -10,7 +11,15 @@ import { DEFAULT_TOKEN_SUPPLY } from "@/lib/chain-config";
 interface TokenCardProps { token: TokenListItem }
 
 export function TokenCard({ token }: TokenCardProps) {
+  const router = useRouter();
   const [copied, setCopied] = useState(false);
+  const creatorAddr = token.creator ?? token.address;
+
+  function openCreator(event: MouseEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    router.push(`/creator/${creatorAddr}`);
+  }
   const change = getChange(token);
   const solUsd = token.market.solUsd;
   const marketCapUsd = (Number(token.current_price) / 1e6) * DEFAULT_TOKEN_SUPPLY * solUsd;
@@ -26,58 +35,81 @@ export function TokenCard({ token }: TokenCardProps) {
 
   return (
     <Link href={`/token/${token.address}`} className="block min-w-0">
-      <article className="group rounded-[11px] border border-[#2d2d31]/65 bg-[#151517] p-4 transition-colors hover:border-[#57575e]/65">
-        <div className="flex items-start gap-5">
-          <div className="relative h-[68px] w-[68px] shrink-0 overflow-visible rounded-full border border-[#3d3d42] bg-[#202023] p-1">
+      <article className="group rounded-[10px] border border-[#1e1e22] bg-[#111114]/80 p-3 transition-colors hover:border-[#3a3a42]">
+        {/* Identity row */}
+        <div className="flex items-center gap-2.5">
+          <div className="h-11 w-11 shrink-0 overflow-hidden rounded-[8px] border border-[#242429] bg-[#1a1a1e]">
             {token.image ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={token.image} alt={token.symbol ?? "token"} className="h-full w-full rounded-full object-cover" />
-            ) : <div className="flex h-full w-full items-center justify-center rounded-full text-xl text-zinc-400">{token.symbol?.slice(0, 1)}</div>}
+              <img src={token.image} alt={token.symbol ?? "token"} className="h-full w-full object-cover" />
+            ) : <div className="flex h-full w-full items-center justify-center text-sm text-zinc-500">{token.symbol?.slice(0, 1)}</div>}
           </div>
-          <div className="min-w-0 flex-1 pt-1">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <p className="truncate text-[16px] text-zinc-100">{token.name ?? "Unknown Token"}</p>
-                <div className="mt-0.5 flex items-center gap-1.5 text-[15px] text-zinc-500">
-                  <span className="truncate">{token.symbol ?? "TOKEN"}</span>
-                  <button
-                    type="button"
-                    onClick={copyTokenAddress}
-                    aria-label="Copy token address"
-                    title={copied ? "Copied" : "Copy token address"}
-                    className="relative z-10 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded text-zinc-600 transition-colors hover:bg-[#29292d] hover:text-zinc-200"
-                  >
-                    {copied ? <Check size={13} weight="bold" /> : <CopySimple size={13} />}
-                  </button>
-                </div>
-              </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5">
+              <p className="min-w-0 flex-1 truncate text-[14px] font-semibold text-zinc-100">{token.name ?? "Unknown Token"}</p>
               {change != null && (
-                <span className={`whitespace-nowrap pt-3 text-xs font-medium ${change >= 0 ? "text-[#30e879]" : "text-[#ff6269]"}`}>
-                  {change >= 0 ? "+" : ""}
-                  {change.toFixed(2)}%
+                <span className={`mono shrink-0 text-[11px] font-semibold ${change >= 0 ? "text-[#4ade80]" : "text-[#ff5b5b]"}`}>
+                  {change >= 0 ? "+" : ""}{change.toFixed(1)}%
                 </span>
               )}
+            </div>
+            <div className="mt-0.5 flex items-center gap-1">
+              <span className="truncate font-mono text-[11px] text-zinc-500">${token.symbol ?? "TOKEN"}</span>
+              <button
+                type="button"
+                onClick={copyTokenAddress}
+                aria-label="Copy token address"
+                title={copied ? "Copied" : "Copy token address"}
+                className="relative z-10 inline-flex h-4 w-4 shrink-0 items-center justify-center rounded text-zinc-600 transition-colors hover:text-zinc-200"
+              >
+                {copied ? <Check size={11} weight="bold" /> : <CopySimple size={11} />}
+              </button>
+              <span
+                className={`ml-auto shrink-0 rounded-[3px] border px-1.5 py-0.5 font-display text-[9px] font-semibold uppercase tracking-[0.1em] ${
+                  token.graduated ? "border-[#26323f] bg-[#141b24] text-[#8ab4ff]" : "border-[#26262b] bg-[#161619] text-zinc-500"
+                }`}
+              >
+                {token.graduated ? "AMM" : "Curve"}
+              </span>
             </div>
           </div>
         </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-3">
-          <Metric label="Market Cap" value={formatUsd(marketCapUsd)} />
-          <Metric label="24h Vol" value={formatUsd(volumeUsd)} />
+        {/* Stats row */}
+        <div className="mt-3 flex items-center justify-between rounded-[7px] border border-[#1a1a1e] bg-[#0c0c0e]/80 px-3 py-2">
+          <Metric label="MC" value={formatUsd(marketCapUsd)} />
+          <span className="h-6 w-px bg-[#1e1e22]" />
+          <Metric label="24h Vol" value={formatUsd(volumeUsd)} align="right" />
         </div>
 
-        <div className="my-3 h-px bg-[#2c2c30]" />
-        <div className="grid grid-cols-2 gap-3 text-xs">
-          <div><p className="text-zinc-500">Creator</p><p className="mt-1 truncate font-semibold text-[11px] text-zinc-300">{truncate(token.creator ?? token.address, 5)}</p></div>
-          <div className="text-right"><p className="text-zinc-500">Venue</p><p className="mt-1 font-semibold text-[11px] text-zinc-300">{token.graduated ? "AMM" : "Curve"}</p></div>
+        {/* Footer */}
+        <div className="mt-2 flex items-center justify-between text-[10px] text-zinc-600">
+          <button
+            type="button"
+            onClick={openCreator}
+            className="relative z-10 truncate transition-colors hover:text-[#6cf07f]"
+            title="View creator"
+          >
+            by {truncate(creatorAddr, 4)}
+          </button>
+          <span className="flex items-center gap-1">
+            {formatAge(token.first_seen_at)}
+            <ArrowUpRight size={12} className="opacity-0 transition-opacity group-hover:opacity-100" />
+          </span>
         </div>
-        <div className="mt-2 flex items-center justify-between text-[10px] text-zinc-600"><span>{formatAge(token.first_seen_at)}</span><ArrowUpRight size={13} className="opacity-0 transition-opacity group-hover:opacity-100" /></div>
       </article>
     </Link>
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) { return <div><p className="text-xs text-zinc-500">{label}</p><p className="mt-1 text-[15px] font-medium text-zinc-100">{value}</p></div>; }
+function Metric({ label, value, align = "left" }: { label: string; value: string; align?: "left" | "right" }) {
+  return (
+    <div className={align === "right" ? "text-right" : ""}>
+      <p className="text-[10px] uppercase tracking-[0.1em] text-zinc-600">{label}</p>
+      <p className="mono mt-0.5 text-[13px] font-semibold text-zinc-100">{value}</p>
+    </div>
+  );
+}
 function formatUsd(value: number): string {
   if (!Number.isFinite(value)) return "$0";
   return Intl.NumberFormat("en-US", {

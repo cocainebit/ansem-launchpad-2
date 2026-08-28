@@ -77,7 +77,7 @@ export function TokenExplorer() {
             }}
             placeholder="Search name, ticker, address"
             autoComplete="off"
-            className="h-9 rounded-lg border-[#2d2d31] bg-[#151517] pl-9 text-xs text-zinc-200 placeholder:font-semibold placeholder:text-zinc-600"
+            className="h-9 rounded-lg border-[#1e1e22] bg-[#131316] pl-9 text-xs text-zinc-200 placeholder:font-semibold placeholder:text-zinc-600"
           />
         </label>
       </div>
@@ -104,7 +104,7 @@ function Tab({ active, onClick, icon, children }: { active: boolean; onClick: ()
     <button
       type="button"
       onClick={onClick}
-      className={`inline-flex h-10 items-center gap-2 rounded-[8px] px-4 text-sm transition-colors ${active ? "bg-[#29292d] text-zinc-100" : "text-zinc-300 hover:bg-[#1b1b1e]"}`}
+      className={`inline-flex h-10 items-center gap-2 rounded-[8px] px-4 text-sm transition-colors ${active ? "bg-[#1e1e22] text-zinc-100" : "text-zinc-300 hover:bg-[#161619]"}`}
     >
       {icon}
       {children}

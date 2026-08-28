@@ -54,7 +54,7 @@ export function AccountDisplay({
           variant="outline"
           aria-label={`Wallet ${truncateAddress(address)}`}
           className={cn(
-            "min-w-0 max-w-full overflow-hidden border-[#29292d] bg-[#202024] text-zinc-100 hover:border-[#3f3f46] hover:bg-[#29292d] hover:text-white",
+            "min-w-0 max-w-full overflow-hidden border-[#1e1e22] bg-[#1a1a1e] text-zinc-100 hover:border-[#3f3f46] hover:bg-[#1e1e22] hover:text-white",
             compact ? "size-10 px-0" : "w-full px-3 font-mono text-sm",
             className,
           )}
@@ -88,7 +88,7 @@ export function AccountDisplay({
       <DropdownMenuContent
         align="end"
         sideOffset={8}
-        className="w-60 rounded-xl border-[#34343a] bg-[#17171a] p-2 text-zinc-100 shadow-2xl shadow-black/50"
+        className="w-60 rounded-xl border-[#2a2a30] bg-[#161619] p-2 text-zinc-100 shadow-2xl shadow-black/50"
       >
         <div className="px-2 pb-2 pt-1">
           <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-zinc-600">
@@ -106,7 +106,7 @@ export function AccountDisplay({
             </div>
           </div>
         </div>
-        <div className="mb-1 flex items-center justify-between rounded-lg bg-[#202024] px-3 py-2.5 text-xs">
+        <div className="mb-1 flex items-center justify-between rounded-lg bg-[#1a1a1e] px-3 py-2.5 text-xs">
           <span className="text-zinc-500">SOL balance</span>
           <span className="font-semibold text-zinc-100">
             {balance === null ? "—" : `${formatSol(balance)} SOL`}

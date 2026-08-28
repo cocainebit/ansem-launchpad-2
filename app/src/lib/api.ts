@@ -9,6 +9,7 @@ import {
   INDEXER_SSE,
   REST_URL,
   denomLabel,
+  HIDDEN_TOKEN_ADDRESSES,
 } from "@/lib/floorlaunch/config";
 import {
   getLaunchpadContract,
@@ -207,7 +208,10 @@ function stubMarket(t: IndexerToken, solUsd: number): MarketInfo {
     unitsPerItem: 0,
     indexLastTs: 0,
     feedAgeSec: null,
-    ammSolReserve: t.graduated ? reserves : 0,
+    // Liquidity = the reserves backing the token, whether that's the AMM pool
+    // (graduated) or the bonding curve (on-curve). Gating this to graduated-only
+    // left every on-curve token showing $0 liquidity.
+    ammSolReserve: reserves,
     ammTokenReserve: 0,
     insuranceSol: 0,
     totalCollateralSol: 0,
@@ -268,7 +272,32 @@ export async function fetchTokens(): Promise<TokenListItem[]> {
     request<{ tokens: IndexerToken[] }>("/tokens"),
     fetchBaseUsd(),
   ]);
-  return tokens.map((t) => toToken(t, solUsd));
+  // Drop tokens hidden for now (pre-launch test-token cleanup). Applied here so
+  // every listing/search that reads fetchTokens is filtered; detail pages use
+  // fetchToken and remain reachable by direct link.
+  return tokens
+    .filter((t) => process.env.NEXT_PUBLIC_SHOW_HIDDEN === "1" || !HIDDEN_TOKEN_ADDRESSES.has(t.address))
+    .map((t) => toToken(t, solUsd));
+}
+
+// The launchpad's real graduation threshold (uchanse micro-units). One cached
+// read powers every feed progress bar so it shows true curve fill toward the
+// AMM, not the unpopulated per-token target. Chain-agnostic: reads live config,
+// so it's correct on localnet and mainnet without a hardcoded number.
+let gradThresholdCache: number | null = null;
+export async function fetchGraduationThreshold(): Promise<number> {
+  if (gradThresholdCache != null) return gradThresholdCache;
+  try {
+    const launchpad = await getLaunchpadContract();
+    const cfg = await smartQuery<{ graduation_threshold: string }>(launchpad, {
+      config: {},
+    });
+    const v = Number(cfg.graduation_threshold);
+    gradThresholdCache = Number.isFinite(v) && v > 0 ? v : 0;
+  } catch {
+    gradThresholdCache = 0;
+  }
+  return gradThresholdCache;
 }
 
 export async function fetchToken(address: string): Promise<TokenListItem> {
@@ -276,7 +305,44 @@ export async function fetchToken(address: string): Promise<TokenListItem> {
     request<IndexerToken>(`/tokens/${address}`),
     fetchBaseUsd(),
   ]);
-  return toToken(t, solUsd);
+  // The indexer's current_price / ansem_reserves only update once a trade is
+  // indexed, so a freshly launched (still-on-curve) token read $0 price / MC /
+  // liquidity. For an on-curve token, overlay the LIVE curve state from the
+  // launchpad contract — it has the correct marginal price and reserves from
+  // block one — so the header shows the real starting MC (~$10k) immediately.
+  let poolValueBase: number | null = null;
+  if (!t.graduated) {
+    try {
+      const curve = await smartQuery<{
+        current_price: string;
+        ansem_reserves: string;
+        tokens_remaining: string;
+      }>((await getLaunchpadContract()), { curve: { token_address: address } });
+      const cp = Number(curve.current_price); // CHANSE per whole token
+      // Curve current_price is per whole token; the indexer field is uchanse
+      // per token (scaled 1e6), so multiply to match the frontend's math.
+      if (Number.isFinite(cp) && cp > 0) t.current_price = String(Math.round(cp * 1e6));
+      if (curve.ansem_reserves && Number(curve.ansem_reserves) > 0) {
+        t.ansem_reserves = curve.ansem_reserves;
+      }
+      // Liquidity = the WHOLE pool: the CHANSE reserves PLUS the unsold tokens
+      // valued at the current price (expressed in base-denom / CHANSE). A
+      // bonding-curve pool holds both sides, so counting only the CHANSE side
+      // under-reported it (showed ~$9 when the pool held thousands in tokens).
+      const reservesBase = Number(curve.ansem_reserves) / 1e6;
+      const tokensRemaining = Number(curve.tokens_remaining) / 1e6;
+      if (Number.isFinite(reservesBase) && Number.isFinite(tokensRemaining) && cp > 0) {
+        poolValueBase = reservesBase + tokensRemaining * cp;
+      }
+    } catch {
+      /* fall back to the indexer values */
+    }
+  }
+  const token = toToken(t, solUsd);
+  // `ammSolReserve` feeds the header's Liquidity (x solUsd -> USD). For an
+  // on-curve token, report the full pool value (both sides) computed above.
+  if (poolValueBase != null) token.market.ammSolReserve = poolValueBase;
+  return token;
 }
 
 // Legacy collectible aggregators — no equivalent on a plain launchpad.
@@ -286,14 +352,14 @@ export const fetchAggregator = async (): Promise<AggregatorRow[]> => [];
 
 // ── candles ─────────────────────────────────────────────────────────────────
 export type Timeframe = "1m" | "5m" | "15m" | "1h" | "4h" | "12h" | "1d";
-// Our indexer supports 1m|5m|1h|1d; map the rest to the nearest supported.
+// The indexer now buckets all of these natively (1m|5m|15m|1h|4h|12h|1d).
 const TF_TO_INDEXER: Record<Timeframe, string> = {
   "1m": "1m",
   "5m": "5m",
-  "15m": "5m",
+  "15m": "15m",
   "1h": "1h",
-  "4h": "1h",
-  "12h": "1d",
+  "4h": "4h",
+  "12h": "12h",
   "1d": "1d",
 };
 
@@ -507,6 +573,24 @@ export async function fetchTokenHolders(
       .sort((a, b) => Number(b.balance) - Number(a.balance));
   } catch {
     return [];
+  }
+}
+
+/** A wallet's CW20 balance of a token, in whole tokens (0 if none/unqueryable).
+ *  The token address IS its cw20 contract. Used by the Sell panel so a holder
+ *  knows how much they can sell. */
+export async function fetchTokenBalance(
+  tokenAddress: string,
+  address: string,
+): Promise<number> {
+  if (!tokenAddress || !address) return 0;
+  try {
+    const { balance } = await smartQuery<{ balance: string }>(tokenAddress, {
+      balance: { address },
+    });
+    return Number(balance) / 1e6;
+  } catch {
+    return 0;
   }
 }
 

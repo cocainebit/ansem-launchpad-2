@@ -3,9 +3,9 @@ import { TelegramLogo, XLogo } from "@phosphor-icons/react";
 
 export function Footer() {
   return (
-    <footer className="mt-8 bg-[#09090b] lg:mt-12">
+    <footer className="mt-8 bg-[#0a0a0b] lg:mt-12">
       <div className="mx-auto w-full max-w-7xl px-4 pb-6 sm:px-6 lg:px-8 lg:pb-8">
-        <div className="rounded-2xl border border-[#29292d] bg-[#151517] px-6 py-8 shadow-sm sm:px-8 sm:py-10">
+        <div className="rounded-2xl border border-[#1e1e22] bg-[#131316] px-6 py-8 shadow-sm sm:px-8 sm:py-10">
           <div className="flex flex-col gap-10 sm:gap-12">
             <div className="flex flex-col gap-8 sm:flex-row sm:items-start sm:justify-between">
               <div>

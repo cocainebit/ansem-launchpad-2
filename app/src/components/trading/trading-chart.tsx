@@ -125,7 +125,7 @@ export function TradingChart({
         </div>
       ) : (
         <div
-          className={terminal ? "flex items-center justify-center bg-[#0d0d0f]" : "flex h-[400px] items-center justify-center rounded-2xl border border-zinc-200 bg-white shadow-sm"}
+          className={terminal ? "flex items-center justify-center bg-[#0a0a0b]" : "flex h-[400px] items-center justify-center rounded-2xl border border-zinc-200 bg-white shadow-sm"}
           style={terminal ? { height: terminalChartHeight } : undefined}
         >
           <div className="text-center space-y-2">

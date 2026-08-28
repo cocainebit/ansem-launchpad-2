@@ -75,6 +75,25 @@ export const IS_LOCALNET =
   RPC_URL.includes("127.0.0.1") || RPC_URL.includes("localhost");
 export const IS_DEVNET = false;
 
+// Tokens hidden from every listing + search FOR NOW — a pre-launch cleanup so
+// the rehearsal/test tokens don't show. Detail pages (/token/<addr>) still
+// resolve, so these stay reachable by direct link for testing. To show
+// everything again at launch, empty this set.
+export const HIDDEN_TOKEN_ADDRESSES = new Set<string>([
+  "ansem1v0840lt6kv2khlgk2hgm230j4f6vmtf4e8lhszcxazfusshx6j7qufe304",
+  "ansem1qvar9rwypdgyhyycmfee0zslpp489szn25wl2k5f2erxvy75mwds36e08k",
+  "ansem1kc749lkcm6v7euwrqr2c9cwf208tqwu0mqetp6s4te4chr6ysj4qtetyq3",
+  "ansem12dwgxsmhx5wwx7ywtqj2s72cjylwr46mqdjsm7e092w44m9mue7q60juz8",
+  "ansem12cks8zuclf9339tnanpdd8z8ycf5ygdgy885sejc7kyhvryzfyzs50tgkh",
+  "ansem1dmd65eend0mjvnmswzxq7ugpyukyfk40ylr6fm2hdhv3lema0yjsxgn4c6",
+  "ansem10dl9tnsfpldlzktvw3xtsn436ntnynkg3xa420hx7pkd2mtz37pq8cxvh0",
+  "ansem1lnx4r7styl209e9lfce8tdd7hyclq98upx25ax3t2qkmcl3jlgvsppdzc2",
+  "ansem18nwjauhgpmfsjf8c4yea0mfj74n6dhy0wkqzydtvvhkmr7gqzxtsawgz5r",
+  "ansem1enrur4t6kyyfgmh84e88muzej4m3zcvje999trctck0e7zr7ktjqvxeytp",
+  "ansem1nkxfnchghtwx73p9fe9keepaerpykagydq00etp09qxk8n048mcs8my62h",
+  "ansem167xst2jy9n6u92t3n8hf762adtpe3cs6acsgn0w5n2xlz9hv3xgsrf6yzu",
+]);
+
 export const EXPLORER_BASE =
   process.env.NEXT_PUBLIC_EXPLORER_URL ?? "https://explorer.ansemchain.fun";
 export function explorerUrl(kind: "address" | "tx", value: string): string {
