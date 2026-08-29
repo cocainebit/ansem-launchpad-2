@@ -54,12 +54,14 @@ interface KeplrLike {
 function providerFor(kind: WalletKind): KeplrLike | null {
   if (typeof window === "undefined") return null;
   const w = window as unknown as {
-    // The ANSEM wallet extension injects its provider under this (legacy-named)
-    // global; it is the extension's real, load-bearing API, never app-facing text.
+    // Current ANSEM extension injects its Keplr-shaped surface under
+    // `ansemWallet`; older builds used `bwickWallet`. Prefer the new global and
+    // fall back to the legacy one so both extension versions connect.
+    ansemWallet?: { cosmos?: KeplrLike };
     bwickWallet?: { cosmos?: KeplrLike };
     keplr?: KeplrLike;
   };
-  if (kind === "ansem") return w.bwickWallet?.cosmos ?? null;
+  if (kind === "ansem") return w.ansemWallet?.cosmos ?? w.bwickWallet?.cosmos ?? null;
   return w.keplr ?? null;
 }
 
