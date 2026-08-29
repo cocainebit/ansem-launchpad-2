@@ -215,7 +215,7 @@ type RawDecayConfig = {
   end_fee_bps: number;
 };
 
-async function loadDecayConfig(address: string): Promise<DecayConfig> {
+export async function loadDecayConfig(address: string): Promise<DecayConfig> {
   const c = await smartQuery<RawDecayConfig>(address, { config: {} });
   return {
     launchTime: Number(c.launch_time ?? 0),

@@ -168,6 +168,14 @@ const PRESETS: Record<string, HornPreset> = {
 const PREVIEW_SLUGS = ["decay", "dynfee", "auction", "arb"] as const;
 const ACCENT = "#6cf07f";
 
+// Anchor the PREVIEW simulation to the current wall-clock hour so it is
+// deterministic across refreshes (reloading no longer restarts it at "launch").
+// Real attached horns ignore this and drive from their on-chain launch_time.
+const PREVIEW_WINDOW_MS = 3_600_000;
+function previewAnchor(): number {
+  return Math.floor(Date.now() / PREVIEW_WINDOW_MS) * PREVIEW_WINDOW_MS;
+}
+
 /* ------------------------------------------------------------------ */
 /* Component                                                          */
 /* ------------------------------------------------------------------ */
@@ -264,9 +272,10 @@ export function HornLiveTracker({ token }: { token: TokenListItem }) {
   const [nowMs, setNowMs] = useState(0);
   const launchRef = useRef(0);
 
-  // Reset the simulated launch whenever the tracked preview horn changes.
+  // Re-anchor the preview when the tracked horn changes (deterministic anchor,
+  // so it doesn't jump back to "launch" on a refresh).
   useEffect(() => {
-    launchRef.current = Date.now();
+    launchRef.current = previewAnchor();
     setNowMs(Date.now());
   }, [slug]);
 
@@ -279,7 +288,7 @@ export function HornLiveTracker({ token }: { token: TokenListItem }) {
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
     setMotionOk(!reduce);
     setMounted(true);
-    launchRef.current = Date.now();
+    launchRef.current = previewAnchor();
     setNowMs(Date.now());
     if (reduce) return;
     const id = window.setInterval(() => setNowMs(Date.now()), 1000);
