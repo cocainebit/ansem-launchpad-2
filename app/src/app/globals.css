@@ -322,7 +322,7 @@
     display: flex;
     width: max-content;
     animation: ansem-marquee 60s linear infinite;
-    animation-direction: reverse;
+    /* Scrolls left (keyframe translates to -50%); no reverse. */
   }
   .ansem-marquee:hover { animation-play-state: paused; }
   @media (prefers-reduced-motion: reduce) {
