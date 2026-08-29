@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Horse, ArrowRight } from "@phosphor-icons/react";
 import { HORNS, HORN_CATEGORIES, type Horn } from "@/lib/horns-catalog";
 import { HornCodeViewer } from "@/components/utoken/horn-code-viewer";
+import { HornLivePools } from "@/components/trading/horn-live-pools";
 
 /**
  * Horns explorer. Pick any Horn to read what it does, see a concrete example of
@@ -36,6 +37,11 @@ export default function HornsPage() {
           reshape how the pool prices, gates, and fills trades. Pick any Horn to read what it does and
           preview its real source.
         </p>
+      </div>
+
+      {/* Live pools: every graduated LP running a Horn, with real fee + timer. */}
+      <div className="mt-8">
+        <HornLivePools />
       </div>
 
       {/* Explorer */}

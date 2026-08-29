@@ -131,7 +131,7 @@ function nameForSlug(slug: string): string | null {
   return HORNS.find((h) => h.slug === slug)?.name ?? null;
 }
 
-async function loadTokenHorn(token: TokenListItem): Promise<AttachedHorn> {
+export async function loadTokenHorn(token: TokenListItem): Promise<AttachedHorn> {
   // Only graduated tokens have an AMM pool that can carry a hook.
   if (!token.graduated) return NOT_ATTACHED;
 
