@@ -123,7 +123,13 @@ const NOT_ATTACHED: AttachedHorn = {
 };
 
 type PoolHook = { address?: string | null; flags?: number | null } | null;
-type RawPool = { hook?: PoolHook; horn_skim_bps?: number | string | null };
+// The AMM PoolResponse exposes `skim_bps` (older builds used `horn_skim_bps`);
+// accept either so the read works across a migration.
+type RawPool = {
+  hook?: PoolHook;
+  skim_bps?: number | string | null;
+  horn_skim_bps?: number | string | null;
+};
 type RegistryEntry = { slug: string; address: string; flags: number };
 type RawRegistry = { entries: RegistryEntry[] };
 
@@ -148,10 +154,8 @@ export async function loadTokenHorn(token: TokenListItem): Promise<AttachedHorn>
   const config = await loadHornConfig();
 
   // Per-pool skim if the pool exposes it, else the launchpad default.
-  const poolSkim =
-    pool.horn_skim_bps != null && pool.horn_skim_bps !== ""
-      ? Number(pool.horn_skim_bps)
-      : null;
+  const rawSkim = pool.skim_bps ?? pool.horn_skim_bps;
+  const poolSkim = rawSkim != null && rawSkim !== "" ? Number(rawSkim) : null;
   const skimBps = poolSkim != null && Number.isFinite(poolSkim) ? poolSkim : config.skimBps;
 
   // Resolve the hook address to a slug/name.
