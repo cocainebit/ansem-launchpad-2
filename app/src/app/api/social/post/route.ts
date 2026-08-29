@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { addPost, listPosts, postExists } from "@/lib/server/social-store";
-import { verifySocial, socialAuthMessage, AUTH_MAX_AGE_MS, type SocialWriteBody } from "@/lib/server/verify";
-import { postSignAction } from "@/lib/social-sign";
+import { verifySocial, AUTH_MAX_AGE_MS, type SocialWriteBody } from "@/lib/server/verify";
+import { canonicalSocialMessage } from "@/lib/social-sign";
+import { relayPost } from "@/lib/server/social-chain";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -72,10 +73,13 @@ export async function POST(req: Request) {
   if (Math.abs(Date.now() - ts) > AUTH_MAX_AGE_MS) {
     return NextResponse.json({ error: "stale signature" }, { status: 401 });
   }
+  // The client signs the contract's canonical message so ONE signature is valid
+  // both here (off-chain store) and at the on-chain relay. Attachments ride as
+  // off-chain metadata and are not bound by this signature.
   const ok = await verifySocial({
     prefix: PREFIX,
     signer: author,
-    message: socialAuthMessage(postSignAction(text, { image, token, quoteOf }), ts),
+    message: canonicalSocialMessage("post", "", ts, text),
     signatureB64: signature,
     pubkeyB64: pubkey,
     scheme: body.scheme,
@@ -86,6 +90,29 @@ export async function POST(req: Request) {
   });
   if (!ok) return NextResponse.json({ error: "bad signature" }, { status: 401 });
 
-  const post = await addPost(author, text, { image, token, quoteOf });
+  // Relay the same signed action on-chain (gas-sponsored). Degrades to
+  // off-chain-only when the relay is unconfigured or the broadcast fails.
+  const relayed = await relayPost(
+    {
+      author,
+      signature,
+      pubkey,
+      scheme: body.scheme,
+      bodyBytesB64: body.bodyBytesB64,
+      authInfoBytesB64: body.authInfoBytesB64,
+      accountNumber: body.accountNumber,
+      chainId: body.chainId,
+    },
+    text,
+    ts,
+  );
+
+  const post = await addPost(author, text, {
+    image,
+    token,
+    quoteOf,
+    onchainId: relayed?.onchainId,
+    txhash: relayed?.txhash,
+  });
   return NextResponse.json({ post });
 }

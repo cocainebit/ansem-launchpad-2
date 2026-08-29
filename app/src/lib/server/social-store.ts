@@ -52,6 +52,11 @@ export type Post = {
   quoteOf?: string;
   /** Resolved + inlined on read when this post has a quoteOf. */
   quoted?: Post;
+  /** The post's id in the on-chain ansem-social contract, when it was relayed
+   *  on-chain (its text + author are signature-verified by the contract). */
+  onchainId?: string;
+  /** The tx hash that recorded this post on-chain (for an explorer link). */
+  txhash?: string;
 };
 
 /** Optional attachments for a new post. */
@@ -349,12 +354,18 @@ function withMeta(db: DB, p: Post, viewer?: string): PostWithMeta {
   return meta;
 }
 
-export function addPost(author: string, text: string, opts?: PostOpts): Promise<Post> {
+export function addPost(
+  author: string,
+  text: string,
+  opts?: PostOpts & { onchainId?: string; txhash?: string },
+): Promise<Post> {
   return withWrite((db) => {
     const post: Post = { id: newId(), author, text, createdAt: Date.now() };
     if (opts?.image) post.image = opts.image;
     if (opts?.token) post.token = opts.token;
     if (opts?.quoteOf) post.quoteOf = opts.quoteOf;
+    if (opts?.onchainId) post.onchainId = opts.onchainId;
+    if (opts?.txhash) post.txhash = opts.txhash;
     db.posts.push(post);
     return post;
   });
@@ -406,9 +417,16 @@ export function togglePostRepost(
   });
 }
 
-export function addPostReply(postId: string, author: string, text: string): Promise<Post> {
+export function addPostReply(
+  postId: string,
+  author: string,
+  text: string,
+  onchain?: { onchainId?: string; txhash?: string },
+): Promise<Post> {
   return withWrite((db) => {
     const reply: Post = { id: newId(), author, text, createdAt: Date.now() };
+    if (onchain?.onchainId) reply.onchainId = onchain.onchainId;
+    if (onchain?.txhash) reply.txhash = onchain.txhash;
     if (!db.postReplies[postId]) db.postReplies[postId] = [];
     db.postReplies[postId].push(reply);
     return reply;

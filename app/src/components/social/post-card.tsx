@@ -140,7 +140,7 @@ export function PostCard({
   function onLike() {
     if (!requireWallet()) return;
     likeM.mutate(
-      { postId: post.id, like: !post.viewerLiked, signer: wallet },
+      { postId: post.id, like: !post.viewerLiked, signer: wallet, onchainId: post.onchainId },
       { onError: (e) => toast.error("Could not like", { description: errMsg(e) }) },
     );
   }
@@ -149,7 +149,7 @@ export function PostCard({
     setRepostMenu(false);
     if (!requireWallet()) return;
     repostM.mutate(
-      { postId: post.id, repost: !post.viewerReposted, signer: wallet },
+      { postId: post.id, repost: !post.viewerReposted, signer: wallet, onchainId: post.onchainId },
       { onError: (e) => toast.error("Could not repost", { description: errMsg(e) }) },
     );
   }
@@ -208,6 +208,21 @@ export function PostCard({
         <PostIdentity profile={p} address={post.author} createdAt={post.createdAt} />
 
         {post.text && <p className={textClass}>{post.text}</p>}
+
+        {/* On-chain badge: this post's text + author are signature-verified and
+            recorded in the ansem-social contract. Links to the tx on the explorer. */}
+        {post.txhash && (
+          <a
+            href={`https://explorer.ansemchain.fun/tx/${post.txhash}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={stop}
+            title="Recorded on-chain in the ansem-social contract"
+            className="mt-2 inline-flex items-center gap-1 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2 py-[3px] font-mono text-[11px] text-emerald-400 transition-colors hover:bg-emerald-500/20"
+          >
+            <span aria-hidden="true">⛓</span> on-chain
+          </a>
+        )}
 
         {/* Inline image */}
         {post.image && (
@@ -439,7 +454,7 @@ function ReplyPanel({
     if (!trimmed || over) return;
     setBusy(true);
     try {
-      await addPostReply(post.id, wallet.address, trimmed, wallet);
+      await addPostReply(post.id, wallet.address, trimmed, wallet, post.onchainId);
       setText("");
       await onReplied();
     } catch (e) {

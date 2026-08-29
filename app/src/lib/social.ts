@@ -3,13 +3,10 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { SocialSignature } from "@/components/wallet/solana-wallet-provider";
 import {
-  postSignAction,
+  canonicalSocialMessage,
   editProfileSignAction,
   followSignAction,
-  likeSignAction,
-  repostSignAction,
   commentSignAction,
-  replySignAction,
 } from "@/lib/social-sign";
 
 /**
@@ -138,6 +135,10 @@ export type Post = {
   /** Present when a viewer is supplied to usePosts. */
   viewerLiked?: boolean;
   viewerReposted?: boolean;
+  /** The post's id in the on-chain ansem-social contract, when relayed on-chain. */
+  onchainId?: string;
+  /** The tx hash that recorded this post on-chain (for an explorer link). */
+  txhash?: string;
 };
 
 /** Global (or by-author) timeline. Pass `viewer` to get like/repost flags + reconcile toggles. */
@@ -196,13 +197,20 @@ export async function toggleLike(
   viewer: string,
   like: boolean,
   signer: Signer,
+  onchainId?: string,
 ): Promise<{ count: number }> {
   const ts = Date.now();
-  const sig = await signer.signSocial(authMessage(likeSignAction(postId, like), ts));
+  // Sign the contract's canonical message so the same signature verifies both
+  // off-chain and (when the target is on-chain) at the relay. `subject` is the
+  // target's on-chain id when it has one, else its off-chain id (which just
+  // never relays). Like is a toggle on-chain; ts keeps each action's message
+  // unique so a like then unlike are distinct signed messages.
+  const subject = onchainId ?? postId;
+  const sig = await signer.signSocial(canonicalSocialMessage("like", subject, ts, ""));
   const r = await fetch("/api/social/post/like", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ postId, user: viewer, like, ts, ...sig }),
+    body: JSON.stringify({ postId, subject, user: viewer, like, ts, ...sig }),
   });
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Could not like");
   return (await r.json()) as { count: number };
@@ -214,13 +222,15 @@ export async function toggleRepost(
   viewer: string,
   repost: boolean,
   signer: Signer,
+  onchainId?: string,
 ): Promise<{ count: number }> {
   const ts = Date.now();
-  const sig = await signer.signSocial(authMessage(repostSignAction(postId, repost), ts));
+  const subject = onchainId ?? postId;
+  const sig = await signer.signSocial(canonicalSocialMessage("repost", subject, ts, ""));
   const r = await fetch("/api/social/post/repost", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ postId, user: viewer, repost, ts, ...sig }),
+    body: JSON.stringify({ postId, subject, user: viewer, repost, ts, ...sig }),
   });
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Could not repost");
   return (await r.json()) as { count: number };
@@ -230,9 +240,9 @@ export async function toggleRepost(
 export function useLikePost(viewer?: string | null) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ postId, like, signer }: { postId: string; like: boolean; signer: Signer }) => {
+    mutationFn: ({ postId, like, signer, onchainId }: { postId: string; like: boolean; signer: Signer; onchainId?: string }) => {
       if (!viewer) throw new Error("Connect a wallet first.");
-      return toggleLike(postId, viewer, like, signer);
+      return toggleLike(postId, viewer, like, signer, onchainId);
     },
     onMutate: async ({ postId, like }) => {
       await qc.cancelQueries({ queryKey: ["social", "posts"] });
@@ -261,9 +271,9 @@ export function useLikePost(viewer?: string | null) {
 export function useRepostPost(viewer?: string | null) {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ postId, repost, signer }: { postId: string; repost: boolean; signer: Signer }) => {
+    mutationFn: ({ postId, repost, signer, onchainId }: { postId: string; repost: boolean; signer: Signer; onchainId?: string }) => {
       if (!viewer) throw new Error("Connect a wallet first.");
-      return toggleRepost(postId, viewer, repost, signer);
+      return toggleRepost(postId, viewer, repost, signer, onchainId);
     },
     onMutate: async ({ postId, repost }) => {
       await qc.cancelQueries({ queryKey: ["social", "posts"] });
@@ -308,13 +318,15 @@ export async function addPostReply(
   author: string,
   text: string,
   signer: Signer,
+  onchainId?: string,
 ): Promise<Post> {
   const ts = Date.now();
-  const sig = await signer.signSocial(authMessage(replySignAction(postId, text), ts));
+  const subject = onchainId ?? postId;
+  const sig = await signer.signSocial(canonicalSocialMessage("reply", subject, ts, text));
   const r = await fetch("/api/social/post/reply", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ postId, author, text, ts, ...sig }),
+    body: JSON.stringify({ postId, subject, author, text, ts, ...sig }),
   });
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Could not reply");
   return ((await r.json()) as { reply: Post }).reply;
@@ -330,12 +342,10 @@ export async function addPost(
   opts?: PostAttachments,
 ): Promise<Post> {
   const ts = Date.now();
-  const action = postSignAction(text, {
-    image: opts?.image,
-    token: opts?.token,
-    quoteOf: opts?.quoteOf,
-  });
-  const sig = await signer.signSocial(authMessage(action, ts));
+  // Sign the on-chain contract's canonical message (text only) so the one
+  // signature is valid both at the off-chain store and the on-chain relay.
+  // Attachments are sent as metadata; they are not bound by this signature.
+  const sig = await signer.signSocial(canonicalSocialMessage("post", "", ts, text));
   const r = await fetch("/api/social/post", {
     method: "POST",
     headers: { "content-type": "application/json" },

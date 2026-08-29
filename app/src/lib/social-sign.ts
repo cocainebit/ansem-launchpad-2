@@ -62,3 +62,32 @@ export function commentSignAction(token: string, text: string): string {
 export function replySignAction(postId: string, text: string): string {
   return `reply-post:${postId}:${text}`;
 }
+
+/*
+ * ── On-chain canonical message ───────────────────────────────────────────────
+ *
+ * The `ansem-social` contract binds a DIFFERENT, self-describing message (it has
+ * no notion of the action strings above). For actions that are relayed on-chain
+ * (post / reply / like / repost) the client signs THIS exact string so one
+ * signature satisfies both the off-chain store and the on-chain contract:
+ *
+ *   ansem social: {kind}:{subject}\nts: {ts}\n{text}
+ *
+ * - kind    : "post" | "reply" | "like" | "repost"
+ * - subject : the target post's on-chain id (decimal) for reply/like/repost, "" for a post
+ * - text    : the content for post/reply, "" for like/repost
+ *
+ * This must match contracts/social/src/lib.rs `canonical_message` byte-for-byte.
+ * Attachments (image/token/quote) are NOT bound here; they are stored off-chain
+ * as metadata alongside the on-chain-authenticated text.
+ */
+export type OnchainKind = "post" | "reply" | "like" | "repost";
+
+export function canonicalSocialMessage(
+  kind: OnchainKind,
+  subject: string,
+  ts: number,
+  text: string,
+): string {
+  return `ansem social: ${kind}:${subject}\nts: ${ts}\n${text}`;
+}
