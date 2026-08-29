@@ -12,6 +12,7 @@ import {
   HIDDEN_TOKEN_ADDRESSES,
 } from "@/lib/floorlaunch/config";
 import {
+  getAmmContract,
   getLaunchpadContract,
   getOracleContract,
 } from "@/lib/floorlaunch/live-config";
@@ -38,6 +39,7 @@ export async function fetchBaseUsd(): Promise<number> {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${INDEXER_HTTP}${path}`, {
+    cache: "no-store",
     ...init,
     headers: { accept: "application/json", ...(init?.headers ?? {}) },
   });
@@ -53,7 +55,7 @@ async function smartQuery<T>(contract: string, msg: unknown): Promise<T> {
       : Buffer.from(JSON.stringify(msg)).toString("base64");
   const res = await fetch(
     `${REST_URL}/cosmwasm/wasm/v1/contract/${contract}/smart/${b64}`,
-    { headers: { accept: "application/json" } },
+    { headers: { accept: "application/json" }, cache: "no-store" },
   );
   if (!res.ok) throw new Error(`smart query -> HTTP ${res.status}`);
   const json = (await res.json()) as { data: T };
@@ -398,6 +400,33 @@ export async function fetchToken(address: string): Promise<TokenListItem> {
       const tokensRemaining = Number(curve.tokens_remaining) / 1e6;
       if (Number.isFinite(reservesBase) && Number.isFinite(tokensRemaining) && cp > 0) {
         poolValueBase = reservesBase + tokensRemaining * cp;
+      }
+    } catch {
+      /* fall back to the indexer values */
+    }
+  } else {
+    // Graduated: the curve is spent and the real price + liquidity now live in
+    // the AMM pool. The indexer's current_price / ansem_reserves can lag or read
+    // a pre-migration value, so overlay the LIVE pool: use the AMM spot price
+    // (CHANSE per whole token) and value the WHOLE pool (both sides) for
+    // liquidity, so a graduated token shows its real MC and TVL, not a stale $.
+    try {
+      const pool = await smartQuery<{
+        ansem_reserve: string;
+        token_reserve: string;
+        price: string;
+      }>(await getAmmContract(), { pool: { token_address: address } });
+      const ammPrice = Number(pool.price); // CHANSE per whole token
+      if (Number.isFinite(ammPrice) && ammPrice > 0) {
+        t.current_price = String(Math.round(ammPrice * 1e6));
+      }
+      const ansemBase = Number(pool.ansem_reserve) / 1e6;
+      const tokenBase = Number(pool.token_reserve) / 1e6;
+      if (Number.isFinite(ansemBase) && ansemBase > 0) {
+        t.ansem_reserves = pool.ansem_reserve;
+        if (Number.isFinite(tokenBase) && ammPrice > 0) {
+          poolValueBase = ansemBase + tokenBase * ammPrice;
+        }
       }
     } catch {
       /* fall back to the indexer values */
