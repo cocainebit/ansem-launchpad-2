@@ -198,6 +198,49 @@ export function useTokenHorn(token: TokenListItem) {
 }
 
 /* ------------------------------------------------------------------ */
+/* Pre-graduation: the creator's selected Horns (from the launchpad curve) */
+/* ------------------------------------------------------------------ */
+
+/** The Horns a creator chose at launch, read from the launchpad Curve. Available
+ *  before graduation; after graduation the attached hook (useTokenHorn) is the
+ *  source of truth. `slugs` are catalog slugs (e.g. ["decay"]). */
+export interface CurveHornChoice {
+  slugs: string[];
+  skimBps: number | null;
+  ansemBps: number | null;
+}
+
+type RawCurveHorn = {
+  horn?: { composite_horns?: string[]; skim_bps?: number; ansem_bps?: number } | null;
+};
+
+async function loadCurveHorn(token: TokenListItem): Promise<CurveHornChoice> {
+  const empty: CurveHornChoice = { slugs: [], skimBps: null, ansemBps: null };
+  if (token.graduated) return empty;
+  const lp = await getLaunchpadContract();
+  const c = await smartQuery<RawCurveHorn>(lp, { curve: { token_address: token.address } });
+  const h = c.horn;
+  if (!h) return empty;
+  return {
+    slugs: Array.isArray(h.composite_horns) ? h.composite_horns : [],
+    skimBps: h.skim_bps ?? null,
+    ansemBps: h.ansem_bps ?? null,
+  };
+}
+
+/** The creator's selected Horns for a not-yet-graduated coin. Returns empty
+ *  slugs when nothing is selected, the coin has graduated, or the launchpad
+ *  build does not yet expose `horn` on the curve query. */
+export function useTokenCurveHorn(token: TokenListItem) {
+  return useQuery({
+    queryKey: ["curve-horn", token.address, token.graduated],
+    queryFn: () => loadCurveHorn(token),
+    enabled: !token.graduated,
+    staleTime: 120_000,
+  });
+}
+
+/* ------------------------------------------------------------------ */
 /* Fee Decay live params (for the Horn tracker)                       */
 /* ------------------------------------------------------------------ */
 

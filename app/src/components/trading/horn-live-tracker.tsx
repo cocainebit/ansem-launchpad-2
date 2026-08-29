@@ -1,31 +1,27 @@
 "use client";
 
 /**
- * HornLiveTracker - a live, animated readout of a Horn's fee mechanic, sitting
- * directly under the price chart on the token page.
+ * HornLiveTracker - a per-pool readout of the coin's Horn(s), under the chart.
  *
- * HONESTY NOTE (read before touching this):
- * The Horns stack is LIVE on ansem-1. This tracker reads the token's graduated
- * AMM pool for a real attached hook (useTokenHorn) and, when one is attached,
- * drives the readout from REAL on-chain params: for Fee Decay it fetches the
- * decay horn's config and computes the current fee from start/end/decay_seconds
- * + wall-clock block time; for Dynamic Fee it shows the real base / discount
- * tiers. The "preview" pill drops to "live" in that case and no figure is
- * simulated.
- *
- * When NO horn is attached (every pre-migration pool has hook=null, and a real
- * per-pool readout can only appear once a coin graduates AFTER the migration
- * with a horn bolted on), the tracker falls back to an explicitly-labelled
- * PREVIEW: an honest client-clock simulation of the MECHANISM, never presented
- * as on-chain data. The per-horn PRESETS map (keyed by catalog slug) powers that
- * preview and its selector tabs.
+ * HONEST, no simulation ever:
+ *  - Graduated + a Horn attached: reads the AMM pool's hook and the horn's own
+ *    on-chain config. Fee Decay (its fee changes over time) draws a live decay
+ *    graph computed from launch_time / decay_seconds / start / end + wall-clock;
+ *    Dynamic Fee shows its real base/discount tiers with NO time graph; anything
+ *    else just names the horn. A Horn only draws a graph when its value actually
+ *    changes over time.
+ *  - Not graduated: shows the creator's SELECTED Horns (read from the launchpad
+ *    curve) with a note that they activate at migration. No graph.
+ *  - Graduated with no hook: says so plainly.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import type { TokenListItem } from "@/lib/api";
-import { HORNS } from "@/lib/horns-catalog";
+import { HORNS, type Horn } from "@/lib/horns-catalog";
 import {
   useTokenHorn,
+  useTokenCurveHorn,
   useDecayConfig,
   useDynfeeConfig,
   decayFeeBpsAt,
@@ -33,160 +29,39 @@ import {
   type DynfeeConfig,
 } from "@/hooks/use-token-horn";
 
-/* ------------------------------------------------------------------ */
-/* Per-horn simulation model                                          */
-/* ------------------------------------------------------------------ */
-
 type Readout = {
-  /** Big number, formatted (e.g. "2.41%"). */
   headline: string;
-  /** Label above the big number (e.g. "Current fee"). */
   headlineLabel: string;
-  /** One-line trajectory description under the number. */
   caption: string;
-  /** Whether the mechanic has run its course (rests / steps aside). */
   settled: boolean;
-  /** 0..1 x-position of the "now" marker on the trajectory track. */
+  /** 0..1 x-position of the "now" marker (graph only). */
   marker: number;
-  /** Normalized height (0..1, 1 = top) of the trajectory at track x in [0,1]. */
+  /** Normalized height (0..1) of the curve at track x in [0,1] (graph only). */
   sample: (x: number) => number;
-  /** Left / right end labels under the track. */
   startLabel: string;
   endLabel: string;
 };
 
-type HornPreset = {
-  slug: string;
-  /** Pure function of elapsed seconds since the (simulated) start. */
-  compute: (elapsedSec: number) => Readout;
-};
-
 const clamp01 = (v: number) => (v < 0 ? 0 : v > 1 ? 1 : v);
 const pct = (v: number) => `${v.toFixed(2)}%`;
-
-// Fee Decay: launch fee starts high and decays toward base over a window.
-// Ease-out power curve so the first blocks pay the most (front-runs snipers)
-// and it flattens into the base rate. Reaches base exactly at the window end.
-const DECAY = { startFee: 5.0, baseFee: 0.3, windowSec: 45 * 60, gamma: 2.2 };
-function decayReadout(elapsedSec: number): Readout {
-  const u = clamp01(elapsedSec / DECAY.windowSec);
-  const feeAt = (x: number) =>
-    DECAY.baseFee + (DECAY.startFee - DECAY.baseFee) * Math.pow(1 - x, DECAY.gamma);
-  const fee = feeAt(u);
-  const settled = u >= 1;
-  const remainingSec = Math.max(0, DECAY.windowSec - elapsedSec);
-  const remainingMin = Math.ceil(remainingSec / 60);
-  return {
-    headline: pct(fee),
-    headlineLabel: "Current fee",
-    caption: settled
-      ? `Settled to base ${pct(DECAY.baseFee)}`
-      : `Decaying to ${pct(DECAY.baseFee)} base, ~${remainingMin}m remaining`,
-    settled,
-    marker: u,
-    sample: (x) => Math.pow(1 - x, DECAY.gamma),
-    startLabel: `${pct(DECAY.startFee)} launch`,
-    endLabel: `${pct(DECAY.baseFee)} base`,
-  };
-}
-
-// Dynamic Fee: fee reacts to a simulated volatility input, clamped to a cap.
-// Deterministic layered sines stand in for a live volatility read.
-const DYN = { baseFee: 0.3, capFee: 3.0, windowSec: 90 };
-function volAt(tSec: number): number {
-  return clamp01(0.5 + 0.32 * Math.sin(tSec / 23) + 0.18 * Math.sin(tSec / 7 + 1.3));
-}
-function dynfeeReadout(elapsedSec: number): Readout {
-  const feeAt = (t: number) => DYN.baseFee + (DYN.capFee - DYN.baseFee) * volAt(t);
-  return {
-    headline: pct(feeAt(elapsedSec)),
-    headlineLabel: "Current fee",
-    caption: `Reacting to volatility, base ${pct(DYN.baseFee)} / cap ${pct(DYN.capFee)}`,
-    settled: false,
-    // Now sits at the right edge; the track shows the recent fee wave.
-    marker: 1,
-    sample: (x) => volAt(elapsedSec - (1 - x) * DYN.windowSec),
-    startLabel: `${DYN.windowSec}s ago`,
-    endLabel: "now",
-  };
-}
-
-// Fee Auction (am-AMM): a seated manager holds the fee seat; rent decays per
-// second until the lease ends and the seat opens for the next bid.
-const AUCTION = { seatFee: 1.2, rent0: 250, leaseSec: 30 * 60 };
-function auctionReadout(elapsedSec: number): Readout {
-  const u = clamp01(elapsedSec / AUCTION.leaseSec);
-  const rent = AUCTION.rent0 * (1 - u);
-  const settled = u >= 1;
-  const remainingMin = Math.ceil(Math.max(0, AUCTION.leaseSec - elapsedSec) / 60);
-  return {
-    headline: `${rent.toFixed(0)} CHANSE`,
-    headlineLabel: "Seat rent",
-    caption: settled
-      ? "Lease ended, seat open for the next bid"
-      : `Seat fee ${pct(AUCTION.seatFee)}, ~${remainingMin}m to lease end`,
-    settled,
-    marker: u,
-    sample: (x) => 1 - x,
-    startLabel: "lease start",
-    endLabel: "lease end",
-  };
-}
-
-// Oracle Arb: a funded subsidy budget hands traders capped price improvement,
-// draining (front-loaded) until it is spent and the horn steps aside.
-const ARB = { budget0: 500, windowSec: 60 * 60, gamma: 1.3 };
-function arbReadout(elapsedSec: number): Readout {
-  const u = clamp01(elapsedSec / ARB.windowSec);
-  const remaining = ARB.budget0 * Math.pow(1 - u, ARB.gamma);
-  const settled = u >= 1;
-  const leftPct = (remaining / ARB.budget0) * 100;
-  return {
-    headline: `${remaining.toFixed(0)} CHANSE`,
-    headlineLabel: "Subsidy left",
-    caption: settled
-      ? "Budget spent, steps aside to the plain swap"
-      : `Handing capped improvement, ~${leftPct.toFixed(0)}% of budget left`,
-    settled,
-    marker: u,
-    sample: (x) => Math.pow(1 - x, ARB.gamma),
-    startLabel: "funded",
-    endLabel: "spent",
-  };
-}
-
-// Keyed by horn slug (matches src/lib/horns-catalog.ts). Fee Decay is the
-// showcase default; the others are live bonus previews. To add another horn,
-// drop a preset here keyed by its catalog slug.
-const PRESETS: Record<string, HornPreset> = {
-  decay: { slug: "decay", compute: decayReadout },
-  dynfee: { slug: "dynfee", compute: dynfeeReadout },
-  auction: { slug: "auction", compute: auctionReadout },
-  arb: { slug: "arb", compute: arbReadout },
-};
-
-const PREVIEW_SLUGS = ["decay", "dynfee", "auction", "arb"] as const;
 const ACCENT = "#6cf07f";
 
-// Anchor the PREVIEW simulation to the current wall-clock hour so it is
-// deterministic across refreshes (reloading no longer restarts it at "launch").
-// Real attached horns ignore this and drive from their on-chain launch_time.
-const PREVIEW_WINDOW_MS = 3_600_000;
-function previewAnchor(): number {
-  return Math.floor(Date.now() / PREVIEW_WINDOW_MS) * PREVIEW_WINDOW_MS;
-}
+// Horns whose fee changes over time get a live graph. Everything else shows its
+// config without a fabricated curve.
+const GRAPH_SLUGS = new Set(["decay"]);
 
-/* ------------------------------------------------------------------ */
-/* Component                                                          */
-/* ------------------------------------------------------------------ */
+function hornMeta(slug: string | null): Horn | undefined {
+  return slug ? HORNS.find((h) => h.slug === slug) : undefined;
+}
+function hornArt(slug: string): string {
+  return `/horns/art/${slug}.png`;
+}
 
 /* ------------------------------------------------------------------ */
 /* Real (on-chain) readouts                                           */
 /* ------------------------------------------------------------------ */
 
-// Fee Decay, driven by the horn's real on-chain config + wall-clock time.
-// `nowSec` is real wall-clock seconds; the fee follows the on-chain linear
-// schedule between start_fee_bps and end_fee_bps over decay_seconds.
+// Fee Decay, from the horn's real config + wall-clock time.
 function realDecayReadout(cfg: DecayConfig, nowSec: number): Readout {
   const endSec = cfg.launchTime + cfg.decaySeconds;
   const feeBps = decayFeeBpsAt(cfg, nowSec);
@@ -204,7 +79,6 @@ function realDecayReadout(cfg: DecayConfig, nowSec: number): Readout {
       : `Decaying to ${pct(endPct)} base, ~${remainingMin}m remaining`,
     settled,
     marker: u,
-    // Normalized height: 1 at the launch fee, 0 at the base fee (linear).
     sample: (x) => {
       const f = cfg.startFeeBps + (cfg.endFeeBps - cfg.startFeeBps) * x;
       return range !== 0 ? clamp01((f - cfg.endFeeBps) / range) : 0;
@@ -214,8 +88,7 @@ function realDecayReadout(cfg: DecayConfig, nowSec: number): Readout {
   };
 }
 
-// Dynamic Fee: real base / discount tiers from the horn's on-chain config. Not a
-// time trajectory, so it rests; the track shows the two tiers.
+// Dynamic Fee: real base / discount tiers. Not time-varying, so no graph.
 function realDynfeeReadout(cfg: DynfeeConfig): Readout {
   const basePct = cfg.baseFeeBps / 100;
   const discPct = cfg.discountFeeBps / 100;
@@ -229,206 +102,198 @@ function realDynfeeReadout(cfg: DynfeeConfig): Readout {
     caption: `ANSEM stakers pay ${pct(discPct)} with ${minLabel} ANSEM staked`,
     settled: true,
     marker: 1,
-    // Two tiers: discounted (low) then base (high).
-    sample: (x) => (x < 0.5 ? 0 : 1),
+    sample: () => 0,
     startLabel: `${pct(discPct)} staker`,
     endLabel: `${pct(basePct)} base`,
   };
 }
 
-// Attached horn whose numeric readout we cannot (yet) compute, or whose config
-// is still loading. Honest: names the horn, shows "-" rather than a fake value.
+// Attached horn whose numeric readout we cannot compute yet: names it, no fake value.
 function liveMinimalReadout(name: string | null): Readout {
   return {
     headline: "-",
     headlineLabel: name ?? "Attached horn",
-    caption: "Attached to this pool. Live fee schedule loading.",
+    caption: "Attached to this pool. Live schedule loading.",
     settled: true,
     marker: 0,
-    sample: () => 0.5,
+    sample: () => 0,
     startLabel: "on-chain",
     endLabel: "live",
   };
 }
 
+/* ------------------------------------------------------------------ */
+/* Component                                                          */
+/* ------------------------------------------------------------------ */
+
 export function HornLiveTracker({ token }: { token: TokenListItem }) {
-  // Real per-token attached-horn read (null / attached:false for pre-hook pools).
-  const hornQ = useTokenHorn(token);
-  const attachedHorn = hornQ.data?.attached ? hornQ.data : null;
-  const attachedSlug = attachedHorn?.slug ?? null;
-  const isLive = attachedHorn != null && attachedSlug != null;
+  // Graduated pools: the attached hook is the source of truth.
+  const attachedQ = useTokenHorn(token);
+  const attached = attachedQ.data?.attached ? attachedQ.data : null;
+  const attachedSlug = attached?.slug ?? null;
 
-  // Real on-chain params for the attached horn (queried only when relevant).
-  const decayQ = useDecayConfig(
-    isLive && attachedSlug === "decay" ? attachedHorn!.address : null,
-  );
-  const dynfeeQ = useDynfeeConfig(
-    isLive && attachedSlug === "dynfee" ? attachedHorn!.address : null,
-  );
+  // Pre-graduation: the creator's selected Horns from the launchpad curve.
+  const curveHornQ = useTokenCurveHorn(token);
+  const selectedSlugs = curveHornQ.data?.slugs ?? [];
 
-  const [slug, setSlug] = useState<string>("decay");
+  const decayQ = useDecayConfig(attachedSlug === "decay" ? attached!.address : null);
+  const dynfeeQ = useDynfeeConfig(attachedSlug === "dynfee" ? attached!.address : null);
+
+  // Real wall clock; only ticks while a live decay horn needs a per-second update.
+  const decayLive = Boolean(attachedSlug === "decay" && decayQ.data);
+  const [nowSec, setNowSec] = useState(() => Math.floor(Date.now() / 1000));
   const [mounted, setMounted] = useState(false);
-  const [motionOk, setMotionOk] = useState(true);
-  const [nowMs, setNowMs] = useState(0);
-  const launchRef = useRef(0);
-
-  // Re-anchor the preview when the tracked horn changes (deterministic anchor,
-  // so it doesn't jump back to "launch" on a refresh).
   useEffect(() => {
-    launchRef.current = previewAnchor();
-    setNowMs(Date.now());
-  }, [slug]);
-
-  // Live client clock. Deterministic elapsed=0 on the server / first paint
-  // (mounted stays false) so there is no hydration mismatch; the clock only
-  // starts after mount. Reduced-motion falls back to a single static read.
-  useEffect(() => {
+    setMounted(true);
+    if (!decayLive) return;
     const reduce =
       typeof window !== "undefined" &&
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
-    setMotionOk(!reduce);
-    setMounted(true);
-    launchRef.current = previewAnchor();
-    setNowMs(Date.now());
     if (reduce) return;
-    const id = window.setInterval(() => setNowMs(Date.now()), 1000);
+    const id = window.setInterval(() => setNowSec(Math.floor(Date.now() / 1000)), 1000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [decayLive]);
 
-  const elapsedSec = mounted ? Math.max(0, (nowMs - launchRef.current) / 1000) : 0;
-
-  // The horn identity shown: the real attached horn when live, else the
-  // previewed one from the selector.
-  const activeSlug = isLive ? attachedSlug! : slug;
-  const horn = HORNS.find((h) => h.slug === activeSlug);
-
-  // Readout: REAL on-chain values when a horn is attached, otherwise the
-  // explicitly-labelled preview simulation. The decay fee is computed from real
-  // config + wall-clock block time; never a simulated number when live.
-  let readout: Readout;
-  if (isLive && attachedSlug === "decay" && decayQ.data) {
-    const nowSec = mounted ? nowMs / 1000 : decayQ.data.launchTime;
-    readout = realDecayReadout(decayQ.data, nowSec);
-  } else if (isLive && attachedSlug === "dynfee" && dynfeeQ.data) {
+  let readout: Readout | null = null;
+  if (attachedSlug === "decay" && decayQ.data) {
+    readout = realDecayReadout(decayQ.data, mounted ? nowSec : decayQ.data.launchTime);
+  } else if (attachedSlug === "dynfee" && dynfeeQ.data) {
     readout = realDynfeeReadout(dynfeeQ.data);
-  } else if (isLive) {
-    // Attached, but its config is still loading (or a horn without a numeric
-    // schedule): honest placeholder, never a simulated figure.
-    readout = liveMinimalReadout(attachedHorn!.name);
-  } else {
-    const preset = PRESETS[slug] ?? PRESETS.decay;
-    readout = preset.compute(elapsedSec);
+  } else if (attached) {
+    readout = liveMinimalReadout(attached.name);
   }
+  const showGraph = Boolean(attachedSlug && GRAPH_SLUGS.has(attachedSlug) && readout);
 
-  const replay = () => {
-    launchRef.current = Date.now();
-    setNowMs(Date.now());
-  };
+  const meta = hornMeta(attachedSlug);
+  const stateLabel = attached ? "live" : token.graduated ? "none" : "pending";
+  const subtitle = attached
+    ? meta
+      ? `${meta.name} - ${meta.tagline}`
+      : attached.name ?? "Attached horn"
+    : token.graduated
+      ? "Plain AMM pool, no Horn"
+      : "Applied when the coin migrates";
 
   return (
     <section className="border-t border-[#161619] px-4 py-4">
-      {/* Header: horn identity + live/preview state */}
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <h3 className="font-display text-[13px] font-semibold uppercase tracking-[0.12em] text-zinc-100">
             Horn tracker
           </h3>
-          <p className="mt-1 truncate text-[11px] leading-4 text-zinc-500">
-            {horn ? `${horn.name} - ${horn.tagline}` : "Live fee mechanic"}
-          </p>
+          <p className="mt-1 truncate text-[11px] leading-4 text-zinc-500">{subtitle}</p>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          {mounted && motionOk && !readout.settled ? (
+          {decayLive && readout && !readout.settled ? (
             <span
               aria-hidden
               className="h-1.5 w-1.5 rounded-full"
               style={{ background: ACCENT, boxShadow: `0 0 6px ${ACCENT}` }}
             />
           ) : null}
-          <span className="rounded-[4px] border border-[#26262b] px-2 py-0.5 font-mono text-[10px] text-zinc-500">
-            {isLive ? "live" : "preview"}
+          <span
+            className={`rounded-[4px] border px-2 py-0.5 font-mono text-[10px] ${
+              attached
+                ? "border-[#2f7d3f] bg-[#6cf07f]/10 text-[#6cf07f]"
+                : "border-[#26262b] text-zinc-500"
+            }`}
+          >
+            {stateLabel}
           </span>
         </div>
       </div>
 
-      {/* Horn selector (bonus previews). Hidden once a real horn is attached. */}
-      {!isLive ? (
-        <div className="mt-3 flex flex-wrap gap-1.5" role="tablist" aria-label="Preview a horn">
-          {PREVIEW_SLUGS.map((s) => {
-            const h = HORNS.find((x) => x.slug === s);
-            const active = s === slug;
-            return (
-              <button
-                key={s}
-                type="button"
-                role="tab"
-                aria-selected={active}
-                title={h?.tagline}
-                onClick={() => setSlug(s)}
-                className={`h-7 rounded-[10px] border px-2.5 font-display text-[10px] font-semibold uppercase tracking-[0.1em] transition-colors duration-300 ease-out ${
-                  active
-                    ? "border-[#2f7d3f] bg-[#6cf07f]/10 text-[#6cf07f]"
-                    : "border-[#1e1e22] bg-[#131316] text-zinc-500 hover:border-[#2a2a30] hover:text-zinc-200"
-                }`}
-              >
-                {h?.name ?? s}
-              </button>
-            );
-          })}
+      {attached && readout ? (
+        <LiveReadout readout={readout} showGraph={showGraph} />
+      ) : token.graduated ? (
+        <div className="mt-3 rounded-[10px] border border-[#1a1a1e] bg-[#0a0a0b] px-4 py-6 text-center">
+          <p className="text-[13px] text-zinc-300">No Horn attached to this pool.</p>
+          <p className="mt-1 text-[12px] text-zinc-600">This coin trades on the plain AMM.</p>
         </div>
-      ) : null}
+      ) : (
+        <PendingHorns slugs={selectedSlugs} loading={curveHornQ.isLoading} />
+      )}
+    </section>
+  );
+}
 
-      {/* Live readout: big number + trajectory track */}
-      <div className="mt-3 grid gap-3 rounded-[10px] border border-[#1a1a1e] bg-[#0a0a0b] p-3 sm:grid-cols-[minmax(0,150px)_minmax(0,1fr)]">
-        {/* Big current value. Keyed on the horn slug (not the ticking value) so
-            the entry animation replays on a horn switch, never on a 1s tick. */}
-        <div key={activeSlug} className="horn-swap flex flex-col justify-center">
-          <p className="text-[9px] uppercase tracking-[0.16em] text-zinc-600">
-            {readout.headlineLabel}
-          </p>
-          <p
-            className="mt-1 font-mono text-[30px] font-bold leading-none tabular-nums text-zinc-100"
-            aria-live={motionOk ? "off" : undefined}
-          >
-            {mounted ? readout.headline : readout.headline}
-          </p>
-          <p className="mt-2 text-[11px] leading-4 text-zinc-400">{readout.caption}</p>
-        </div>
+function LiveReadout({ readout, showGraph }: { readout: Readout; showGraph: boolean }) {
+  return (
+    <div
+      className={`mt-3 gap-3 rounded-[10px] border border-[#1a1a1e] bg-[#0a0a0b] p-3 ${
+        showGraph ? "grid sm:grid-cols-[minmax(0,150px)_minmax(0,1fr)]" : "block"
+      }`}
+    >
+      <div className="flex flex-col justify-center">
+        <p className="text-[9px] uppercase tracking-[0.16em] text-zinc-600">
+          {readout.headlineLabel}
+        </p>
+        <p className="mt-1 font-mono text-[30px] font-bold leading-none tabular-nums text-zinc-100">
+          {readout.headline}
+        </p>
+        <p className="mt-2 text-[11px] leading-4 text-zinc-400">{readout.caption}</p>
+        {!showGraph ? (
+          <div className="mt-2 flex flex-wrap gap-1.5 font-mono text-[9px] uppercase tracking-[0.1em] text-zinc-500">
+            <span className="rounded border border-[#26262b] bg-[#131316] px-1.5 py-0.5">
+              {readout.startLabel}
+            </span>
+            <span className="rounded border border-[#26262b] bg-[#131316] px-1.5 py-0.5">
+              {readout.endLabel}
+            </span>
+          </div>
+        ) : null}
+      </div>
 
-        {/* Trajectory track. Same slug key so the curve swaps in step with the
-            readout, and stays put across the per-second value ticks. */}
-        <div key={`${activeSlug}-track`} className="horn-swap flex flex-col justify-center">
+      {showGraph ? (
+        <div className="flex flex-col justify-center">
           <TrajectoryTrack readout={readout} accent={ACCENT} />
           <div className="mt-1.5 flex items-center justify-between font-mono text-[9px] uppercase tracking-[0.12em] text-zinc-600">
             <span>{readout.startLabel}</span>
             <span>{readout.endLabel}</span>
           </div>
         </div>
-      </div>
+      ) : null}
+    </div>
+  );
+}
 
-      {/* Footer: honest preview label + replay for settled sims */}
-      <div className="mt-2 flex items-center justify-between gap-3">
-        <p className="text-[10px] leading-4 text-zinc-600">
-          {isLive
-            ? "Live fee schedule read from this pool's attached horn."
-            : "Preview: a live simulation of the mechanic. A real per-pool readout appears once this coin's pool has a horn attached."}
+function PendingHorns({ slugs, loading }: { slugs: string[]; loading: boolean }) {
+  const metas = slugs.map((s) => hornMeta(s)).filter((h): h is Horn => Boolean(h));
+  return (
+    <div className="mt-3 rounded-[10px] border border-[#1a1a1e] bg-[#0a0a0b] p-4">
+      <p className="text-[12px] leading-5 text-zinc-300">
+        These Horns activate when the coin migrates to the AMM.
+      </p>
+      {metas.length > 0 ? (
+        <div className="mt-3 space-y-1.5">
+          {metas.map((h) => (
+            <Link
+              key={h.slug}
+              href="/horns"
+              className="flex items-center gap-2.5 rounded-lg px-1 py-1 transition-colors hover:bg-[#131316]"
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={hornArt(h.slug)} alt="" className="h-8 w-8 shrink-0 object-contain" />
+              <span className="min-w-0">
+                <span className="block truncate text-[13px] font-semibold text-zinc-200">{h.name}</span>
+                <span className="block truncate text-[11px] text-zinc-600">{h.tagline}</span>
+              </span>
+            </Link>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-1.5 text-[12px] text-zinc-600">
+          {loading
+            ? "Reading the coin's Horn selection..."
+            : "The creator's Horn selection appears here once the coin is on its curve."}
         </p>
-        {!isLive && readout.settled ? (
-          <button
-            type="button"
-            onClick={replay}
-            className="shrink-0 rounded-[6px] border border-[#2a2a30] px-2.5 py-1 font-display text-[10px] font-semibold uppercase tracking-[0.1em] text-zinc-300 transition-colors hover:border-[#3a3a42] hover:text-zinc-100"
-          >
-            Replay
-          </button>
-        ) : null}
-      </div>
-    </section>
+      )}
+    </div>
   );
 }
 
 /* ------------------------------------------------------------------ */
-/* Trajectory sparkline                                               */
+/* Trajectory sparkline (thick line + round dot; drawn for time-varying horns) */
 /* ------------------------------------------------------------------ */
 
 function TrajectoryTrack({ readout, accent }: { readout: Readout; accent: string }) {
@@ -437,83 +302,64 @@ function TrajectoryTrack({ readout, accent }: { readout: Readout; accent: string
   const PAD = 4;
   const N = 48;
 
-  // Sample the curve. Coordinates are rounded to 2 dp so an SSR pass and the
-  // first client render produce byte-identical path strings (no hydration warn).
-  const { line, area, markerX, markerY } = useMemo(() => {
-    const yFor = (h: number) => PAD + (1 - clamp01(h)) * (H - 2 * PAD);
-    const pts: string[] = [];
-    for (let i = 0; i <= N; i++) {
-      const x = i / N;
-      const px = (x * W).toFixed(2);
-      const py = yFor(readout.sample(x)).toFixed(2);
-      pts.push(`${px},${py}`);
-    }
-    const line = `M ${pts.join(" L ")}`;
-    const area = `${line} L ${W},${(H - PAD).toFixed(2)} L 0,${(H - PAD).toFixed(2)} Z`;
-    const mx = clamp01(readout.marker) * W;
-    const my = yFor(readout.sample(clamp01(readout.marker)));
-    return { line, area, markerX: Number(mx.toFixed(2)), markerY: Number(my.toFixed(2)) };
-  }, [readout]);
+  const yFor = (h: number) => PAD + (1 - clamp01(h)) * (H - 2 * PAD);
+  const pts: string[] = [];
+  for (let i = 0; i <= N; i++) {
+    const x = i / N;
+    pts.push(`${(x * W).toFixed(2)},${yFor(readout.sample(x)).toFixed(2)}`);
+  }
+  const line = `M ${pts.join(" L ")}`;
+  const area = `${line} L ${W},${(H - PAD).toFixed(2)} L 0,${(H - PAD).toFixed(2)} Z`;
+  const markerX = Number((clamp01(readout.marker) * W).toFixed(2));
+  const markerY = Number(yFor(readout.sample(clamp01(readout.marker))).toFixed(2));
 
   const gradId = "hornTrackGrad";
   return (
-    <svg
-      viewBox={`0 0 ${W} ${H}`}
-      preserveAspectRatio="none"
-      className="h-[52px] w-full"
+    <div
+      className="relative h-[128px] w-full"
       role="img"
       aria-label={`${readout.headlineLabel} trajectory: ${readout.caption}`}
     >
-      <defs>
-        <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor={accent} stopOpacity="0.10" />
-          <stop offset="60%" stopColor={accent} stopOpacity="0.03" />
-          <stop offset="100%" stopColor={accent} stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      {/* base / floor line */}
-      <line
-        x1="0"
-        y1={(H - PAD).toFixed(2)}
-        x2={W}
-        y2={(H - PAD).toFixed(2)}
-        stroke="#26262b"
-        strokeWidth="0.5"
-        strokeDasharray="2 2"
-        vectorEffect="non-scaling-stroke"
+      <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" className="absolute inset-0 h-full w-full">
+        <defs>
+          <linearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={accent} stopOpacity="0.14" />
+            <stop offset="70%" stopColor={accent} stopOpacity="0.03" />
+            <stop offset="100%" stopColor={accent} stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        <line
+          x1="0"
+          y1={(H - PAD).toFixed(2)}
+          x2={W}
+          y2={(H - PAD).toFixed(2)}
+          stroke="#2a2a30"
+          strokeWidth="1"
+          strokeDasharray="3 3"
+          vectorEffect="non-scaling-stroke"
+        />
+        <path d={area} fill={`url(#${gradId})`} />
+        <path
+          d={line}
+          fill="none"
+          stroke={accent}
+          strokeWidth="2.25"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
+      {/* "now" dot in pixel space so it stays a perfect circle. */}
+      <span
+        className="pointer-events-none absolute h-[11px] w-[11px] -translate-x-1/2 -translate-y-1/2 rounded-full"
+        style={{
+          left: `${markerX}%`,
+          top: `${(markerY / H) * 100}%`,
+          background: accent,
+          boxShadow: `0 0 10px ${accent}, 0 0 2px ${accent}`,
+          border: "2px solid #0a0a0b",
+        }}
       />
-      <path d={area} fill={`url(#${gradId})`} />
-      <path
-        d={line}
-        fill="none"
-        stroke={accent}
-        strokeWidth="1"
-        strokeOpacity="0.7"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        vectorEffect="non-scaling-stroke"
-      />
-      {/* now marker */}
-      <line
-        x1={markerX}
-        y1="0"
-        x2={markerX}
-        y2={H}
-        stroke={accent}
-        strokeWidth="0.75"
-        strokeOpacity="0.4"
-        vectorEffect="non-scaling-stroke"
-      />
-      <circle cx={markerX} cy={markerY} r="2.5" fill={accent} vectorEffect="non-scaling-stroke" />
-      <circle
-        cx={markerX}
-        cy={markerY}
-        r="2.5"
-        fill="none"
-        stroke="#0a0a0b"
-        strokeWidth="0.75"
-        vectorEffect="non-scaling-stroke"
-      />
-    </svg>
+    </div>
   );
 }
