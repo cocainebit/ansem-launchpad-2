@@ -268,6 +268,26 @@ function toToken(t: IndexerToken, solUsd: number): TokenListItem {
   };
 }
 
+// Live AMM pools keyed by token address, from ONE all_pools query. Graduated
+// tokens price off the pool, not the indexer's current_price (which can lag or
+// hold a curve-phase value), so overlaying this keeps lists in step with the
+// token page. Best-effort: an unreachable AMM just leaves the indexer values.
+async function fetchAmmPoolMap(): Promise<
+  Map<string, { price: string; ansem_reserve: string }>
+> {
+  const m = new Map<string, { price: string; ansem_reserve: string }>();
+  try {
+    const amm = await getAmmContract();
+    const res = await smartQuery<{
+      pools: Array<{ token_address: string; price: string; ansem_reserve: string }>;
+    }>(amm, { all_pools: {} });
+    for (const p of res.pools ?? []) m.set(p.token_address, p);
+  } catch {
+    /* leave empty -> indexer values stand */
+  }
+  return m;
+}
+
 // ── token data ──────────────────────────────────────────────────────────────
 export async function fetchTokens(): Promise<TokenListItem[]> {
   const [{ tokens }, solUsd] = await Promise.all([
@@ -277,9 +297,23 @@ export async function fetchTokens(): Promise<TokenListItem[]> {
   // Drop tokens hidden for now (pre-launch test-token cleanup). Applied here so
   // every listing/search that reads fetchTokens is filtered; detail pages use
   // fetchToken and remain reachable by direct link.
-  return tokens
-    .filter((t) => process.env.NEXT_PUBLIC_SHOW_HIDDEN === "1" || !HIDDEN_TOKEN_ADDRESSES.has(t.address))
-    .map((t) => toToken(t, solUsd));
+  const visible = tokens.filter(
+    (t) => process.env.NEXT_PUBLIC_SHOW_HIDDEN === "1" || !HIDDEN_TOKEN_ADDRESSES.has(t.address),
+  );
+  // Overlay the live AMM pool for graduated tokens so list cards show the real
+  // price/MC (matching the token page), not a stale indexer figure.
+  const pools = visible.some((t) => t.graduated) ? await fetchAmmPoolMap() : null;
+  if (pools) {
+    for (const t of visible) {
+      if (!t.graduated) continue;
+      const p = pools.get(t.address);
+      if (!p) continue;
+      const price = Number(p.price); // CHANSE per whole token
+      if (Number.isFinite(price) && price > 0) t.current_price = String(Math.round(price * 1e6));
+      if (p.ansem_reserve && Number(p.ansem_reserve) > 0) t.ansem_reserves = p.ansem_reserve;
+    }
+  }
+  return visible.map((t) => toToken(t, solUsd));
 }
 
 // ── real 24h price change (computed from candles) ───────────────────────────
