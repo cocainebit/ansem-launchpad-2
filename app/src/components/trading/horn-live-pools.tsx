@@ -89,7 +89,7 @@ export function HornLivePools() {
     <section className="rounded-2xl border border-[#1e1e22] bg-[#0e0e10]/80 p-5">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div>
-          <h2 className="font-display text-[13px] font-semibold uppercase tracking-[0.12em] text-zinc-200">
+          <h2 className="font-display text-[16px] font-bold tracking-tight text-white">
             Live Horns
           </h2>
           <p className="mt-1 text-[12px] text-zinc-500">

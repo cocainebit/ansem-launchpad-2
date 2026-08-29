@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Horse, ArrowRight } from "@phosphor-icons/react";
+import { ArrowRight } from "@phosphor-icons/react";
 import { HORNS, HORN_CATEGORIES, type Horn } from "@/lib/horns-catalog";
 import { HornCodeViewer } from "@/components/utoken/horn-code-viewer";
 import { HornLivePools } from "@/components/trading/horn-live-pools";
@@ -22,7 +22,6 @@ export default function HornsPage() {
       {/* Hero */}
       <div className="max-w-3xl">
         <div className="flex items-center gap-2">
-          <Horse size={20} weight="fill" className="text-[#6cf07f]" />
           <span className="font-display text-[12px] font-semibold uppercase tracking-[0.18em] text-[#6cf07f]">
             Horns
           </span>
