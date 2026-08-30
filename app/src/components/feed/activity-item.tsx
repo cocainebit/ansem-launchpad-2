@@ -29,28 +29,21 @@ export function ActivityItem({ trade }: ActivityItemProps) {
     return () => clearInterval(interval);
   }, [trade.time]);
 
-  // Determine icon and color based on direction
+  // Icon + label from the normalized buy/sell action (api.ts tradeSide already
+  // resolved AMM swaps via their direction, so we key off action directly).
   const getDirectionDisplay = () => {
-    switch (trade.direction) {
+    switch (trade.action) {
       case "buy":
-      case "xyz_to_token":
         return {
           icon: <ArrowBendUpRight size={16} weight="fill" />,
           color: "text-primary",
           action: "Bought",
         };
       case "sell":
-      case "token_to_xyz":
         return {
           icon: <ArrowBendDownRight size={16} weight="fill" />,
           color: "text-zinc-600",
           action: "Sold",
-        };
-      case "swap":
-        return {
-          icon: <ArrowsLeftRight size={16} weight="fill" />,
-          color: "text-primary",
-          action: "Swapped",
         };
       default:
         return {

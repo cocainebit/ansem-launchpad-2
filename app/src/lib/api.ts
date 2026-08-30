@@ -550,6 +550,18 @@ export interface TokenTrade {
 export const TOKEN_TRADES_QUERY_KEY = (address: string) =>
   ["trades", "token", address] as const;
 
+/**
+ * Buy vs sell for display. Curve trades carry action "buy"/"sell" directly;
+ * graduated pools emit action "swap" with a direction (ansem_to_token = buy,
+ * token_to_ansem = sell). Collapsing everything-not-"sell" to "buy" mislabeled
+ * every AMM sell as a buy, so derive the side from BOTH fields.
+ */
+export function tradeSide(action: string, direction: string): "buy" | "sell" {
+  if (action === "sell") return "sell";
+  if (action === "swap") return direction === "token_to_ansem" ? "sell" : "buy";
+  return "buy"; // buy, buy_and_graduate
+}
+
 export async function fetchTokenTrades(
   tokenAddress: string,
   limit = 20,
@@ -560,7 +572,7 @@ export async function fetchTokenTrades(
   return trades.map((tr) => ({
     time: tr.time,
     tx_hash: tr.tx_hash,
-    action: tr.action === "sell" ? "sell" : "buy",
+    action: tradeSide(tr.action, tr.direction),
     trader: tr.trader,
     hodl_amount: tr.volume_uchanse,
     token_amount: tr.volume_token,
@@ -596,7 +608,8 @@ export async function fetchRecentTrades(limit = 50): Promise<RecentTrade[]> {
     time: tr.time,
     tx_hash: tr.tx_hash,
     source: tr.source,
-    action: tr.action,
+    // Normalized buy/sell (AMM swaps carry action "swap" + a direction).
+    action: tradeSide(tr.action, tr.direction),
     direction: tr.direction,
     token_address: tr.token_address,
     price_uxyz: tr.price_uchanse,
