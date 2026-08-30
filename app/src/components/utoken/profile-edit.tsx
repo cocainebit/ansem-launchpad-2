@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useRef, useState, type DragEvent } from "react";
 import { Camera, Trash, User, X } from "@phosphor-icons/react";
 import { toast } from "sonner";
 import { saveProfile, type Profile } from "@/lib/social";
@@ -219,6 +219,30 @@ function ProfileImages({
   const avatarInput = useRef<HTMLInputElement>(null);
   const [bannerBusy, setBannerBusy] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
+  const [bannerDrag, setBannerDrag] = useState(false);
+  const [avatarDrag, setAvatarDrag] = useState(false);
+
+  // Shared drag-and-drop handlers: drop an image straight onto the banner/avatar.
+  function dropHandlers(
+    onFile: (f: File | undefined) => void,
+    setDrag: (v: boolean) => void,
+  ) {
+    return {
+      onDragOver: (e: DragEvent) => {
+        e.preventDefault();
+        setDrag(true);
+      },
+      onDragLeave: (e: DragEvent) => {
+        e.preventDefault();
+        setDrag(false);
+      },
+      onDrop: (e: DragEvent) => {
+        e.preventDefault();
+        setDrag(false);
+        void onFile(e.dataTransfer.files?.[0]);
+      },
+    };
+  }
 
   async function onBannerFile(file: File | undefined) {
     if (!file) return;
@@ -254,7 +278,8 @@ function ProfileImages({
         <button
           type="button"
           onClick={() => bannerInput.current?.click()}
-          className="group relative block aspect-[3.8/1] w-full overflow-hidden rounded-xl border border-[var(--hairline)] bg-[#202022]"
+          {...dropHandlers(onBannerFile, setBannerDrag)}
+          className={`group relative block aspect-[3.8/1] w-full overflow-hidden rounded-xl border bg-[#202022] transition-colors ${bannerDrag ? "border-[#6cf07f] ring-2 ring-[#6cf07f]" : "border-[var(--hairline)]"}`}
         >
           {banner ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -262,15 +287,16 @@ function ProfileImages({
           ) : (
             <div className="h-full w-full bg-gradient-to-br from-[#1f2a20] via-[#1c1c1e] to-[#161616]" />
           )}
-          <span className="absolute inset-0 flex items-center justify-center gap-1.5 bg-black/40 text-[12px] font-medium text-white opacity-0 transition-opacity group-hover:opacity-100">
-            <Camera size={16} weight="fill" /> {bannerBusy ? "Processing…" : banner ? "Change banner" : "Upload banner"}
+          <span className={`absolute inset-0 flex items-center justify-center gap-1.5 bg-black/40 text-[12px] font-medium text-white transition-opacity ${bannerDrag ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
+            <Camera size={16} weight="fill" /> {bannerBusy ? "Processing…" : bannerDrag ? "Drop to set banner" : banner ? "Change banner" : "Upload or drop banner"}
           </span>
         </button>
         {/* Submerged avatar: overlaps only the banner, ring-cutout like the profile */}
         <button
           type="button"
           onClick={() => avatarInput.current?.click()}
-          className="group absolute -bottom-8 left-4 h-20 w-20 overflow-hidden rounded-full border-2 border-[#1c1c1e] bg-[#202022] ring-4 ring-[#1c1c1e]"
+          {...dropHandlers(onAvatarFile, setAvatarDrag)}
+          className={`group absolute -bottom-8 left-4 h-20 w-20 overflow-hidden rounded-full border-2 border-[#1c1c1e] bg-[#202022] ring-4 transition-colors ${avatarDrag ? "ring-[#6cf07f]" : "ring-[#1c1c1e]"}`}
         >
           {avatar ? (
             // eslint-disable-next-line @next/next/no-img-element
@@ -280,7 +306,7 @@ function ProfileImages({
               <User size={34} weight="fill" />
             </span>
           )}
-          <span className="absolute inset-0 flex items-center justify-center bg-black/45 text-white opacity-0 transition-opacity group-hover:opacity-100">
+          <span className={`absolute inset-0 flex items-center justify-center bg-black/45 text-white transition-opacity ${avatarBusy || avatarDrag ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
             <Camera size={18} weight="fill" />
           </span>
         </button>
@@ -288,7 +314,7 @@ function ProfileImages({
 
       {/* Banner size hint on its own line, cleared to the right of the avatar */}
       <div className="mt-1.5 flex items-center gap-3 pl-[108px]">
-        <span className="text-[11px] text-zinc-600">Wide image, ~3.8:1. Downscaled to 1200px.</span>
+        <span className="text-[11px] text-zinc-600">Click or drag an image in. Wide, ~3.8:1, downscaled to 1200px. Avatar too.</span>
         {banner && (
           <button type="button" onClick={() => onBanner("")} className="inline-flex items-center gap-1 text-[11px] text-zinc-500 hover:text-[#ff5b5b]">
             <Trash size={12} /> Remove
