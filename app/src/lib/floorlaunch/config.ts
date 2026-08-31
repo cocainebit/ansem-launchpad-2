@@ -11,14 +11,56 @@ export const REST_URL =
 export const DENOM = process.env.NEXT_PUBLIC_ANSEM_DENOM ?? "uchanse";
 export const DENOM_DECIMALS = 6;
 
-// Native base denoms a launch can use.
+// Native base denoms a launch can use. The four `*x` denoms are tokenized-stock
+// (RWA) denominations registered on the chain: a curve denominated in one of
+// them prices/graduates against that stock's oracle (see STOCK_DENOMS below).
 export const BASE_DENOMS = {
   chanse: "uchanse",
   ansem: "uansem",
+  nvdax: "unvdax",
+  tslax: "utslax",
+  aaplx: "uaaplx",
+  spyx: "uspyx",
 } as const;
 export type BaseDenom = (typeof BASE_DENOMS)[keyof typeof BASE_DENOMS];
+export type BaseDenomKey = keyof typeof BASE_DENOMS;
+
+// utoken denom -> display ticker. Stock denoms render as their ticker; every
+// other denom falls back to CHANSE.
+const DENOM_LABELS: Record<string, string> = {
+  uchanse: "CHANSE",
+  uansem: "ANSEM",
+  unvdax: "NVDA",
+  utslax: "TSLA",
+  uaaplx: "AAPL",
+  uspyx: "SPY",
+};
 export function denomLabel(denom: string): string {
-  return denom === "uansem" ? "ANSEM" : "CHANSE";
+  return DENOM_LABELS[denom] ?? "CHANSE";
+}
+
+// Tokenized-stock (RWA) launch denominations. Selecting one denominates the
+// bonding curve in that stock; graduation is oracle-derived (the launchpad
+// resolves the per-denom oracle itself), so no manual graduation target is
+// needed. Logos are clean ticker badges under public/stocks (not the companies'
+// trademarked artwork). `key` matches the BASE_DENOMS key.
+export type StockDenomKey = "nvdax" | "tslax" | "aaplx" | "spyx";
+export interface StockDenom {
+  key: StockDenomKey;
+  denom: string;
+  ticker: string;
+  name: string;
+  color: string;
+  logo: string;
+}
+export const STOCK_DENOMS: StockDenom[] = [
+  { key: "nvdax", denom: BASE_DENOMS.nvdax, ticker: "NVDA", name: "Nvidia", color: "#76b900", logo: "/stocks/nvda.svg" },
+  { key: "tslax", denom: BASE_DENOMS.tslax, ticker: "TSLA", name: "Tesla", color: "#e31937", logo: "/stocks/tsla.svg" },
+  { key: "aaplx", denom: BASE_DENOMS.aaplx, ticker: "AAPL", name: "Apple", color: "#a3aab2", logo: "/stocks/aapl.svg" },
+  { key: "spyx", denom: BASE_DENOMS.spyx, ticker: "SPY", name: "S&P 500 ETF", color: "#4b8dff", logo: "/stocks/spy.svg" },
+];
+export function isStockDenomKey(k: string): k is StockDenomKey {
+  return STOCK_DENOMS.some((s) => s.key === k);
 }
 
 // ── mutable contract addresses ──────────────────────────────────────────────

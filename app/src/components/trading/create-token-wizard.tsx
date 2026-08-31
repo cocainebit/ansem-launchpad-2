@@ -30,7 +30,13 @@ import { useFloorWallet } from "@/components/wallet/solana-wallet-provider";
 import { createToken } from "@/lib/ansem/launchpad-tx";
 import { resolveTokenAddressFromTx, saveTeamLaunch } from "@/lib/token-meta";
 import { HORNS, type Horn } from "@/lib/horns-catalog";
-import { BASE_DENOMS, explorerUrl } from "@/lib/floorlaunch/config";
+import {
+  BASE_DENOMS,
+  STOCK_DENOMS,
+  isStockDenomKey,
+  denomLabel,
+  explorerUrl,
+} from "@/lib/floorlaunch/config";
 
 // Exact local Inter variable subset supplied for the create flow. It is scoped
 // to the wizard root so the rest of the application keeps its existing typeface.
@@ -137,7 +143,10 @@ function changesLine(cat: Horn["category"]): string {
   return "For traders: reshapes how the pool prices and holds depth.";
 }
 
-type BaseChoice = "chanse" | "ansem";
+// A launch denomination: CHANSE, ANSEM, or one of the tokenized-stock (RWA)
+// denoms. All map 1:1 to a key in BASE_DENOMS, so BASE_DENOMS[base] is the
+// utoken denom sent on-chain. Stock denoms (and ANSEM) are oracle-derived.
+type BaseChoice = keyof typeof BASE_DENOMS;
 type StepKey = "intro" | "horn" | "skim" | "name" | "review";
 const STEP_LABEL: Record<StepKey, string> = {
   intro: "Start",
@@ -251,11 +260,13 @@ export function CreateTokenWizard() {
     }
   }, []);
 
+  // A manual graduation target is only required for ANSEM launches. CHANSE and
+  // the stock (RWA) denoms are oracle-derived, so no target input is needed.
   const nameValid = useMemo(
     () =>
       name.trim().length > 0 &&
       symbol.trim().length > 0 &&
-      (base === "chanse" || Number(gradAnsem) > 0),
+      (base !== "ansem" || Number(gradAnsem) > 0),
     [name, symbol, base, gradAnsem],
   );
   const canSubmit = Boolean(wallet.connected) && !submitting && nameValid;
@@ -304,7 +315,12 @@ export function CreateTokenWizard() {
         image: image.trim(),
         description: description.trim(),
         socialLinks,
-        baseDenom: base === "chanse" ? BASE_DENOMS.chanse : BASE_DENOMS.ansem,
+        // BASE_DENOMS maps the choice (chanse|ansem|nvdax|tslax|aaplx|spyx) to
+        // its utoken denom (uchanse|uansem|unvdax|utslax|uaaplx|uspyx). Stock
+        // launches send their denom exactly like CHANSE/ANSEM do.
+        baseDenom: BASE_DENOMS[base],
+        // Only ANSEM carries a manual graduation raise; stock launches are
+        // oracle-derived, so the client sends base_denom alone.
         baseGradThreshold:
           base === "ansem" ? String(Math.round(Number(gradAnsem) * 1_000_000)) : undefined,
         horn: attachHorns
@@ -1169,6 +1185,55 @@ function NameStep(props: {
         </p>
       </div>
 
+      {/* Launch against a stock (RWA). Selecting one is a launch-denomination
+          choice: it overrides the CHANSE/ANSEM picker above (they share `base`),
+          and picking CHANSE/ANSEM there deselects the stock here. */}
+      <div className="mt-6">
+        <label className="mb-1 block text-[14px] font-semibold text-zinc-100">
+          Launch against a stock <span className="ml-1 font-normal text-zinc-500">(RWA)</span>
+        </label>
+        <p className="mb-3 text-[11.5px] leading-5 text-zinc-500">
+          Denominate your curve in a tokenized stock. Sizing is oracle-derived, so there is no
+          graduation target to set.
+        </p>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {STOCK_DENOMS.map((s) => {
+            const on = base === s.key;
+            return (
+              <button
+                key={s.key}
+                type="button"
+                onClick={() => setBase(on ? "chanse" : s.key)}
+                aria-pressed={on}
+                className={`flex flex-col items-center gap-2 rounded-[12px] border p-3 text-center transition-colors ${
+                  on
+                    ? "border-[#6cf07f]/70 bg-[#17261d]"
+                    : "border-[#26262b] bg-[#161618] hover:border-[#3a3a42]"
+                }`}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={s.logo} alt="" className="h-11 w-11 shrink-0" />
+                <span className="min-w-0">
+                  <span
+                    style={{ ...POPPINS, fontWeight: 600 }}
+                    className="block truncate text-[13px] text-zinc-100"
+                  >
+                    {s.ticker}
+                  </span>
+                  <span className="mt-0.5 block truncate text-[11px] text-zinc-500">
+                    denominate your curve in {s.ticker}
+                  </span>
+                </span>
+                {on && <Check size={14} weight="bold" className="text-[#6cf07f]" />}
+              </button>
+            );
+          })}
+        </div>
+        <p className="mt-2 text-[11px] leading-5 text-zinc-600">
+          Trading a stock-denominated token requires bridging that stock in — see docs.
+        </p>
+      </div>
+
       {base === "ansem" && (
         <div className="mt-5 ansem-fade-in">
           <label className="mb-2 block text-[14px] font-semibold text-zinc-100">Graduation target (ANSEM)</label>
@@ -1316,9 +1381,14 @@ function ReviewStep({
 
         <ReviewSection label="Launch denomination" onEdit={onEditDetails} compact>
           <div>
-            <span className="text-[15px] font-semibold text-zinc-100">{base === "chanse" ? "CHANSE" : "ANSEM"}</span>
+            <span className="text-[15px] font-semibold text-zinc-100">
+              Denominated in {denomLabel(BASE_DENOMS[base])}
+            </span>
             {base === "ansem" && Number(gradAnsem) > 0 && (
               <span className="ml-2 text-[13px] text-zinc-500">Graduates at {gradAnsem} ANSEM</span>
+            )}
+            {isStockDenomKey(base) && (
+              <span className="ml-2 text-[13px] text-zinc-500">RWA · oracle-derived graduation</span>
             )}
           </div>
         </ReviewSection>
