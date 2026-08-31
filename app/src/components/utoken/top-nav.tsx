@@ -113,6 +113,9 @@ export function TopNav({ squareCorners = false }: { squareCorners?: boolean }) {
           <Link href="/feed" className="transition-colors hover:text-white">
             Feed
           </Link>
+          <Link href="/analytics" className="transition-colors hover:text-white">
+            Analytics
+          </Link>
           <Link href="/leaderboard" className="transition-colors hover:text-white">
             Leaderboard
           </Link>

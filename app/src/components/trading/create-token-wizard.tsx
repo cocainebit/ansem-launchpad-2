@@ -1212,8 +1212,8 @@ function NameStep(props: {
                 }`}
               >
                 {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={s.logo} alt="" className="h-11 w-11 shrink-0" />
-                <span className="min-w-0">
+                <img src={s.logo} alt="" className="h-11 w-11 shrink-0 rounded-full" />
+                <span className="block w-full min-w-0">
                   <span
                     style={{ ...POPPINS, fontWeight: 600 }}
                     className="block truncate text-[13px] text-zinc-100"
@@ -1221,7 +1221,7 @@ function NameStep(props: {
                     {s.ticker}
                   </span>
                   <span className="mt-0.5 block truncate text-[11px] text-zinc-500">
-                    denominate your curve in {s.ticker}
+                    {s.name}
                   </span>
                 </span>
                 {on && <Check size={14} weight="bold" className="text-[#6cf07f]" />}
