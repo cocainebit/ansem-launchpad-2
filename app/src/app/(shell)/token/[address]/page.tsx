@@ -621,6 +621,31 @@ function Overview({ token, trades }: { token: TokenListItem; trades: TokenTrade[
         {token.description?.trim() || `Trade ${token.name} against its live collectible market.`}
       </p>
 
+      {(token.social_links?.length ?? 0) > 0 ? (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {token.social_links!.map((url) => {
+            let label = "Link";
+            try {
+              const host = new URL(url).hostname.replace(/^www\./, "");
+              label = host === "x.com" || host === "twitter.com" ? "𝕏 Twitter" : host;
+            } catch {
+              /* keep generic label for an unparseable URL */
+            }
+            return (
+              <a
+                key={url}
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer nofollow"
+                className="rounded-full border border-[#2a2a30] bg-[#1a1a1e] px-2.5 py-1 text-[10px] font-semibold text-zinc-300 transition-colors hover:border-[#3a3a42] hover:text-zinc-100"
+              >
+                {label}
+              </a>
+            );
+          })}
+        </div>
+      ) : null}
+
       <div className="mt-3 grid grid-cols-4 gap-1.5">
         {OVERVIEW_RANGES.map((item) => {
           const change = changeFor(item.ms);

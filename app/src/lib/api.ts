@@ -69,6 +69,7 @@ interface IndexerToken {
   symbol: string | null;
   image: string | null;
   description: string | null;
+  social_links: string[] | null;
   creator: string | null;
   source: string;
   graduated: boolean;
@@ -133,6 +134,7 @@ export interface TokenListItem {
   symbol: string | null;
   image: string | null;
   description: string | null;
+  social_links: string[] | null;
   creator: string | null;
   source: string;
   graduated: boolean;
@@ -249,6 +251,7 @@ function toToken(t: IndexerToken, solUsd: number): TokenListItem {
     symbol: t.symbol,
     image: t.image,
     description: t.description,
+    social_links: t.social_links ?? null,
     creator: t.creator,
     source: t.source,
     graduated: t.graduated,
