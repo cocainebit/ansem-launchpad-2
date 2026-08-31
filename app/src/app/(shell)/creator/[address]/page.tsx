@@ -250,6 +250,14 @@ export default function CreatorPage() {
               {profile.verified && (
                 <SealCheck size={22} weight="fill" className="shrink-0 text-[#6cf07f]" aria-label="Verified" />
               )}
+              {/* A token-<username> account is a reserved handle not yet bound to a
+                  wallet — mark it Reserved. The tag drops once its owner binds a
+                  wallet (the address becomes ansem1...). */}
+              {!isOnchainAddress && (
+                <span className="shrink-0 rounded-full border border-[#4a4327] bg-[#2a2616] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-amber-300/90">
+                  Reserved
+                </span>
+              )}
             </div>
             {/* When a username exists, the address sits next to it on one line;
                 otherwise the address stands alone under the name. */}
@@ -257,18 +265,22 @@ export default function CreatorPage() {
               {identity.showHandle && identity.handle && (
                 <>
                   <span className="font-mono text-[13px] text-zinc-500">{identity.handle}</span>
-                  <span className="text-zinc-700">·</span>
+                  {isOnchainAddress && <span className="text-zinc-700">·</span>}
                 </>
               )}
-              <button
-                type="button"
-                onClick={copyAddress}
-                title={copied ? "Copied" : "Copy address"}
-                className="inline-flex items-center gap-1 font-mono text-[12px] text-zinc-500 transition-colors hover:text-zinc-300"
-              >
-                {handle}
-                {copied ? <Check size={12} weight="bold" className="text-[#6cf07f]" /> : <CopySimple size={12} />}
-              </button>
+              {/* A token-<username> owner id is not a real address — hide it (and
+                  its dangling separator) for reserved/token accounts. */}
+              {isOnchainAddress && (
+                <button
+                  type="button"
+                  onClick={copyAddress}
+                  title={copied ? "Copied" : "Copy address"}
+                  className="inline-flex items-center gap-1 font-mono text-[12px] text-zinc-500 transition-colors hover:text-zinc-300"
+                >
+                  {handle}
+                  {copied ? <Check size={12} weight="bold" className="text-[#6cf07f]" /> : <CopySimple size={12} />}
+                </button>
+              )}
             </div>
             {profile.bio ? (
               <p className="mt-3 whitespace-pre-line text-[14px] leading-6 text-zinc-300">{profile.bio}</p>

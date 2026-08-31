@@ -100,6 +100,42 @@ export type PostWithMeta = Post & {
   viewerReposted?: boolean;
 };
 
+/**
+ * An in-app notification, as returned to the app (public shape). A notification
+ * is produced only as a SIDE EFFECT of another social write (a follow, a like /
+ * repost / reply on your post, a DM, or an @mention). `read` is derived from the
+ * stored read timestamp. The disk store keeps a richer internal row (with the
+ * recipient + readAt) that maps to this on read.
+ */
+export type Notification = {
+  id: string;
+  /** follow | like | repost | reply | comment | mention | dm */
+  kind: string;
+  /** Who caused the notification. */
+  actor?: string;
+  /** The post it concerns (reply / like / repost / mention-in-post). */
+  postId?: string;
+  /** For a `dm`, the sender (so the client can open that conversation). */
+  dmPeer?: string;
+  /** Short text snippet (reply / mention / dm bodies). */
+  preview?: string;
+  read: boolean;
+  createdAt: number;
+};
+
+/** The disk store's internal notification row (adds recipient + readAt). */
+type StoredNotification = {
+  id: string;
+  recipient: string;
+  kind: string;
+  actor?: string;
+  postId?: string;
+  dmPeer?: string;
+  preview?: string;
+  readAt: number | null;
+  createdAt: number;
+};
+
 type DB = {
   profiles: Record<string, Profile>;
   /** canonical username -> address (unique handle index) */
@@ -120,6 +156,8 @@ type DB = {
   postReplies: Record<string, Post[]>;
   /** direct messages (all conversations), newest last */
   dms: Message[];
+  /** in-app notifications (all recipients), newest last */
+  notifications: StoredNotification[];
 };
 
 const DATA_DIR = path.join(process.cwd(), ".data");
@@ -195,6 +233,7 @@ function emptyDB(): DB {
     postReposts: {},
     postReplies: {},
     dms: [],
+    notifications: [],
   };
 }
 
@@ -210,6 +249,7 @@ function normalize(db: DB): DB {
   if (!db.postReposts) db.postReposts = {};
   if (!db.postReplies) db.postReplies = {};
   if (!db.dms) db.dms = [];
+  if (!db.notifications) db.notifications = [];
   return db;
 }
 
@@ -513,6 +553,7 @@ export function setFollow(follower: string, target: string, follow: boolean): Pr
     // Log a follow event for activity feeds (only on a new follow).
     if (follow && !wasFollowing) {
       db.followEvents.push({ follower, target, createdAt: Date.now() });
+      emitLocalNotification(db, { recipient: target, kind: "follow", actor: follower });
     }
     return follow;
   });
@@ -538,6 +579,70 @@ export async function listFollowEvents(opts: { target?: string; limit?: number }
 
 function newId(): string {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
+}
+
+// ── disk-store notification emitters (dev fallback) ───────────────────────────
+//
+// When SOCIAL_WRITE_TOKEN is unset the app IS the store (dev), so the same
+// notification side effects the indexer produces are mirrored here off the disk
+// writes. In production (remote store) none of these run — the indexer emits.
+
+const MENTION_RE = /@([a-z0-9_]{3,20})/g;
+
+function notifPreview(text: string): string | undefined {
+  const t = (text ?? "").replace(/\s+/g, " ").trim();
+  return t ? t.slice(0, 140) : undefined;
+}
+
+/** Push a notification row (never notify an actor about their own action). */
+function emitLocalNotification(
+  db: DB,
+  n: {
+    recipient: string;
+    kind: string;
+    actor?: string;
+    postId?: string;
+    dmPeer?: string;
+    preview?: string;
+  },
+): void {
+  if (!n.recipient) return;
+  if (n.actor && n.recipient === n.actor) return;
+  db.notifications.push({
+    id: newId(),
+    recipient: n.recipient,
+    kind: n.kind,
+    actor: n.actor,
+    postId: n.postId,
+    dmPeer: n.dmPeer,
+    preview: n.preview,
+    readAt: null,
+    createdAt: Date.now(),
+  });
+}
+
+/** Emit a `mention` per distinct, non-author, resolved @handle not in `exclude`. */
+function emitLocalMentions(
+  db: DB,
+  opts: { text: string; actor: string; postId?: string; exclude?: Iterable<string> },
+): void {
+  const handles = new Set<string>();
+  for (const m of (opts.text ?? "").matchAll(MENTION_RE)) handles.add(m[1].toLowerCase());
+  if (!handles.size) return;
+  const seen = new Set<string>(opts.exclude ?? []);
+  seen.add(opts.actor);
+  for (const handle of handles) {
+    const address = db.usernames[handle];
+    if (!address || seen.has(address)) continue;
+    seen.add(address);
+    emitLocalNotification(db, {
+      recipient: address,
+      kind: "mention",
+      actor: opts.actor,
+      postId: opts.postId,
+      preview: notifPreview(opts.text),
+    });
+  }
 }
 
 export async function listPosts(opts: {
@@ -612,6 +717,7 @@ export function addPost(
     if (opts?.onchainId) post.onchainId = opts.onchainId;
     if (opts?.txhash) post.txhash = opts.txhash;
     db.posts.push(post);
+    emitLocalMentions(db, { text, actor: author, postId: post.id });
     return post;
   });
 }
@@ -656,9 +762,15 @@ export function togglePostLike(postId: string, user: string, like: boolean): Pro
   }
   return withWrite((db) => {
     const set = new Set(db.postLikes[postId] ?? []);
+    const had = set.has(user);
     if (like) set.add(user);
     else set.delete(user);
     db.postLikes[postId] = [...set];
+    // Notify the post's author only on a NEW like.
+    if (like && !had) {
+      const author = db.posts.find((p) => p.id === postId)?.author;
+      if (author) emitLocalNotification(db, { recipient: author, kind: "like", actor: user, postId });
+    }
     return { count: set.size };
   });
 }
@@ -676,9 +788,15 @@ export function togglePostRepost(
   }
   return withWrite((db) => {
     const set = new Set(db.postReposts[postId] ?? []);
+    const had = set.has(user);
     if (repost) set.add(user);
     else set.delete(user);
     db.postReposts[postId] = [...set];
+    // Notify the post's author only on a NEW repost.
+    if (repost && !had) {
+      const author = db.posts.find((p) => p.id === postId)?.author;
+      if (author) emitLocalNotification(db, { recipient: author, kind: "repost", actor: user, postId });
+    }
     return { count: set.size };
   });
 }
@@ -704,6 +822,17 @@ export function addPostReply(
     if (onchain?.txhash) reply.txhash = onchain.txhash;
     if (!db.postReplies[postId]) db.postReplies[postId] = [];
     db.postReplies[postId].push(reply);
+    // Notify the parent post's author (reply), then @mentions in the body —
+    // never the parent author twice (reply kind wins over a mention).
+    const parent = db.posts.find((p) => p.id === postId)?.author;
+    const exclude = new Set<string>();
+    if (parent) {
+      exclude.add(parent);
+      emitLocalNotification(db, {
+        recipient: parent, kind: "reply", actor: author, postId, preview: notifPreview(text),
+      });
+    }
+    emitLocalMentions(db, { text, actor: author, postId, exclude });
     return reply;
   });
 }
@@ -746,8 +875,164 @@ export function addComment(token: string, author: string, text: string): Promise
     const comment: Post = { id: newId(), author, text, token, createdAt: Date.now() };
     if (!db.comments[token]) db.comments[token] = [];
     db.comments[token].push(comment);
+    // A comment is on a token (no parent post author); only @mentions in the
+    // body generate notifications, with no postId.
+    emitLocalMentions(db, { text, actor: author });
     return comment;
   });
+}
+
+// ── trending / discovery ──────────────────────────────────────────────────────
+//
+// Public discovery surfaces (trending posts, trending hashtags, a hashtag feed,
+// suggested follows). Remote-backed by the indexer's public GET routes; the disk
+// fallback computes the same shapes from the in-process DB so dev works without
+// the remote store. Reads only, all public.
+
+/** A trending hashtag: the tag (no leading #) + its post counts. */
+export type TrendingHashtag = { tag: string; count: number; posts24h: number };
+
+/** A suggested profile to follow: a profile plus its follower/overlap counts. */
+export type SuggestedProfile = { address: string } & Profile & {
+  followerCount: number;
+  mutual: number;
+};
+
+/** Whole-tag, case-insensitive test that `text` contains #<tag>. */
+function textHasTag(text: string, tag: string): boolean {
+  return new RegExp(`(^|[^A-Za-z0-9_])#${tag}([^A-Za-z0-9_]|$)`, "i").test(text);
+}
+
+/** All distinct lowercased hashtags in a post body. */
+function extractTags(text: string): string[] {
+  const out = new Set<string>();
+  const re = /#([A-Za-z0-9_]{2,32})/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) out.add(m[1].toLowerCase());
+  return [...out];
+}
+
+/** Main-feed posts ranked by a windowed engagement score with recency decay. */
+export async function listTrendingPosts(opts: {
+  windowHours?: number;
+  limit?: number;
+  viewer?: string;
+}): Promise<PostWithMeta[]> {
+  if (useRemoteSocial) {
+    const qs = new URLSearchParams();
+    if (opts.windowHours != null) qs.set("window", String(opts.windowHours));
+    if (opts.limit != null) qs.set("limit", String(opts.limit));
+    if (opts.viewer) qs.set("viewer", opts.viewer);
+    const res = await fetch(`${SOCIAL_API_BASE}/social/trending/posts?${qs.toString()}`, { cache: "no-store" });
+    if (!res.ok) return [];
+    return ((await res.json()) as { posts?: PostWithMeta[] }).posts ?? [];
+  }
+  const db = await load();
+  const windowMs = (opts.windowHours ?? 24) * 3600_000;
+  const limit = Math.min(opts.limit ?? 30, 100);
+  const now = Date.now();
+  const cutoff = now - windowMs;
+  const scored = db.posts
+    .map((p) => {
+      const likesW = (db.postLikes[p.id] ?? []).length; // disk store keeps no per-like ts
+      const repostsW = (db.postReposts[p.id] ?? []).length;
+      const repliesW = (db.postReplies[p.id] ?? []).filter((r) => r.createdAt >= cutoff).length;
+      const raw = likesW + 2 * repostsW + 1.5 * repliesW;
+      const ageH = (now - p.createdAt) / 3600_000;
+      return { p, score: raw / Math.pow(ageH + 2, 1.5) };
+    })
+    .sort((a, b) => b.score - a.score || b.p.createdAt - a.p.createdAt)
+    .slice(0, limit);
+  return scored.map((s) => withMeta(db, s.p, opts.viewer));
+}
+
+/** Trending hashtags, ranked by distinct posts in the last 24h. */
+export async function listTrendingHashtags(limit = 12): Promise<TrendingHashtag[]> {
+  if (useRemoteSocial) {
+    const res = await fetch(`${SOCIAL_API_BASE}/social/hashtags/trending?limit=${limit}`, { cache: "no-store" });
+    if (!res.ok) return [];
+    return ((await res.json()) as { tags?: TrendingHashtag[] }).tags ?? [];
+  }
+  const db = await load();
+  const dayAgo = Date.now() - 24 * 3600_000;
+  const all = new Map<string, number>();
+  const recent = new Map<string, number>();
+  for (const p of db.posts) {
+    for (const tag of extractTags(p.text)) {
+      all.set(tag, (all.get(tag) ?? 0) + 1);
+      if (p.createdAt >= dayAgo) recent.set(tag, (recent.get(tag) ?? 0) + 1);
+    }
+  }
+  return [...recent.entries()]
+    .map(([tag, posts24h]) => ({ tag, count: all.get(tag) ?? posts24h, posts24h }))
+    .sort((a, b) => b.posts24h - a.posts24h || b.count - a.count || a.tag.localeCompare(b.tag))
+    .slice(0, Math.min(limit, 50));
+}
+
+/** Recent main-feed posts containing #<tag>. */
+export async function listHashtagPosts(
+  tag: string,
+  opts: { limit?: number; viewer?: string } = {},
+): Promise<PostWithMeta[]> {
+  const clean = tag.replace(/^#/, "").toLowerCase();
+  if (useRemoteSocial) {
+    const qs = new URLSearchParams();
+    if (opts.limit != null) qs.set("limit", String(opts.limit));
+    if (opts.viewer) qs.set("viewer", opts.viewer);
+    const res = await fetch(`${SOCIAL_API_BASE}/social/hashtag/${encodeURIComponent(clean)}?${qs.toString()}`, { cache: "no-store" });
+    if (!res.ok) return [];
+    return ((await res.json()) as { posts?: PostWithMeta[] }).posts ?? [];
+  }
+  const db = await load();
+  const limit = Math.min(opts.limit ?? 50, 200);
+  return [...db.posts]
+    .reverse()
+    .filter((p) => textHasTag(p.text, clean))
+    .slice(0, limit)
+    .map((p) => withMeta(db, p, opts.viewer));
+}
+
+/** Suggested follows for `me` (nullable), ranked by follower count + overlap. */
+export async function listSuggestedFollows(me: string | null, limit = 8): Promise<SuggestedProfile[]> {
+  if (useRemoteSocial) {
+    const qs = new URLSearchParams();
+    if (me) qs.set("me", me);
+    qs.set("limit", String(limit));
+    const res = await fetch(`${SOCIAL_API_BASE}/social/suggested-follows?${qs.toString()}`, { cache: "no-store" });
+    if (!res.ok) return [];
+    return ((await res.json()) as { profiles?: SuggestedProfile[] }).profiles ?? [];
+  }
+  const db = await load();
+  const myFollows = new Set(me ? db.follows[me] ?? [] : []);
+  // follower counts
+  const followerCount = new Map<string, number>();
+  for (const targets of Object.values(db.follows)) {
+    for (const t of targets) followerCount.set(t, (followerCount.get(t) ?? 0) + 1);
+  }
+  // follows-of-follows overlap: accounts followed by the people `me` follows.
+  const mutual = new Map<string, number>();
+  if (me) {
+    for (const f of myFollows) {
+      for (const t of db.follows[f] ?? []) mutual.set(t, (mutual.get(t) ?? 0) + 1);
+    }
+  }
+  const candidates = new Set<string>([...followerCount.keys(), ...Object.keys(db.profiles)]);
+  return [...candidates]
+    .filter((a) => a !== me && !a.startsWith("token-") && !myFollows.has(a))
+    .map((address) => ({
+      address,
+      ...(db.profiles[address] ?? {}),
+      followerCount: followerCount.get(address) ?? 0,
+      mutual: mutual.get(address) ?? 0,
+    }))
+    .sort(
+      (a, b) =>
+        b.mutual - a.mutual ||
+        b.followerCount - a.followerCount ||
+        (b.updatedAt ?? 0) - (a.updatedAt ?? 0) ||
+        a.address.localeCompare(b.address),
+    )
+    .slice(0, Math.min(limit, 50));
 }
 
 // ── direct messages (wallet-to-wallet chat) ──────────────────────────────────
@@ -768,6 +1053,10 @@ export function sendDm(sender: string, recipient: string, text: string): Promise
   return withWrite((db) => {
     const message: Message = { id: newId(), sender, recipient, text, createdAt: Date.now(), readAt: null };
     db.dms.push(message);
+    // Notify the recipient of a received DM (dmPeer = the sender).
+    emitLocalNotification(db, {
+      recipient, kind: "dm", actor: sender, dmPeer: sender, preview: notifPreview(text),
+    });
     return message;
   });
 }
@@ -826,4 +1115,74 @@ export async function getDmInbox(me: string, limit = 100): Promise<DmThreadSumma
     }))
     .sort((a, b) => b.lastAt - a.lastAt)
     .slice(0, Math.min(limit, 300));
+}
+
+// ── notifications (private, same server-trust model as DMs) ───────────────────
+//
+// The Next route verifies the reader's signature and passes only the VERIFIED
+// `me`; these reads/mark are bearer-gated on the remote just like DMs. Rows are
+// produced only as side effects of other writes (emitted by the indexer, or by
+// the disk emitters above in dev). Remote branch hits the indexer; the disk
+// fallback serves the same shape from the local store.
+
+/** Map an internal stored row to the app's public Notification shape. */
+function toNotification(n: StoredNotification): Notification {
+  return {
+    id: n.id,
+    kind: n.kind,
+    actor: n.actor,
+    postId: n.postId,
+    dmPeer: n.dmPeer,
+    preview: n.preview,
+    read: n.readAt != null,
+    createdAt: n.createdAt,
+  };
+}
+
+/** The caller's notifications, newest-first. */
+export async function getNotifications(me: string, limit = 50): Promise<Notification[]> {
+  if (useRemoteSocial) {
+    const qs = new URLSearchParams({ me, limit: String(limit) });
+    const d = await socialReadAuthed<{ items?: Notification[] }>(`/social/notifications?${qs.toString()}`);
+    return d.items ?? [];
+  }
+  const db = await load();
+  return db.notifications
+    .filter((n) => n.recipient === me)
+    .sort((a, b) => b.createdAt - a.createdAt)
+    .slice(0, Math.min(limit, 100))
+    .map(toNotification);
+}
+
+/** The caller's unread notification count. */
+export async function getUnreadCount(me: string): Promise<number> {
+  if (useRemoteSocial) {
+    const qs = new URLSearchParams({ me });
+    const d = await socialReadAuthed<{ count?: number }>(
+      `/social/notifications/unread-count?${qs.toString()}`,
+    );
+    return d.count ?? 0;
+  }
+  const db = await load();
+  return db.notifications.filter((n) => n.recipient === me && n.readAt == null).length;
+}
+
+/** Mark the listed notification ids read, or ALL of `me`'s unread when omitted. */
+export async function markNotificationsRead(me: string, ids?: string[]): Promise<number> {
+  if (useRemoteSocial) {
+    const d = await socialWrite<{ marked?: number }>("/social/notifications/read", { me, ids });
+    return d.marked ?? 0;
+  }
+  return withWrite((db) => {
+    const now = Date.now();
+    const idSet = ids ? new Set(ids) : null;
+    let marked = 0;
+    for (const n of db.notifications) {
+      if (n.recipient !== me || n.readAt != null) continue;
+      if (idSet && !idSet.has(n.id)) continue;
+      n.readAt = now;
+      marked += 1;
+    }
+    return marked;
+  });
 }

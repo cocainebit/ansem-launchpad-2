@@ -7,6 +7,7 @@ import { usePosts, useGraph, type Post } from "@/lib/social";
 import { PostCard } from "@/components/social/post-card";
 import { PostComposer } from "@/components/social/post-composer";
 import { FeedShell } from "@/components/social/feed-rails";
+import { TrendingTagsStrip } from "@/components/social/discover";
 
 type Tab = "for-you" | "following";
 type Wallet = ReturnType<typeof useFloorWallet>;
@@ -34,6 +35,8 @@ export default function FeedPage() {
           The global timeline of everyone on ansemchain.
         </p>
       </div>
+
+      <TrendingTagsStrip />
 
       <PostComposer wallet={wallet} onPosted={refresh} />
 

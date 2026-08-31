@@ -24,6 +24,7 @@ import {
 } from "@/lib/social";
 import { Avatar, short, ago, errMsg, TokenPreviewBanner, PostIdentity } from "@/components/social/shared";
 import { PostComposer } from "@/components/social/post-composer";
+import { RichText } from "@/components/social/rich-text";
 
 const REPLY_MAX = 500;
 type Wallet = ReturnType<typeof useFloorWallet>;
@@ -207,7 +208,7 @@ export function PostCard({
       <div className="min-w-0 flex-1">
         <PostIdentity profile={p} address={post.author} createdAt={post.createdAt} />
 
-        {post.text && <p className={textClass}>{post.text}</p>}
+        {post.text && <RichText text={post.text} className={textClass} />}
 
         {/* On-chain badge: this post's text + author are signature-verified and
             recorded in the ansem-social contract. Links to the tx on the explorer. */}
@@ -409,9 +410,10 @@ function QuotedPost({ post }: { post: Post }) {
         <span className="font-mono text-[12px] text-zinc-600">{ago(post.createdAt)}</span>
       </div>
       {post.text && (
-        <p className="mt-1 whitespace-pre-wrap break-words font-sans text-[13px] leading-5 text-zinc-300">
-          {post.text}
-        </p>
+        <RichText
+          text={post.text}
+          className="mt-1 whitespace-pre-wrap break-words font-sans text-[13px] leading-5 text-zinc-300"
+        />
       )}
       {post.image && (
         <div className="mt-2 w-fit">
@@ -532,9 +534,10 @@ function ReplyRow({ reply }: { reply: Post }) {
           </Link>
           <span className="font-mono text-[11px] text-zinc-600">{ago(reply.createdAt)}</span>
         </div>
-        <p className="mt-0.5 whitespace-pre-wrap break-words font-sans text-[13px] leading-5 text-zinc-300">
-          {reply.text}
-        </p>
+        <RichText
+          text={reply.text}
+          className="mt-0.5 whitespace-pre-wrap break-words font-sans text-[13px] leading-5 text-zinc-300"
+        />
       </div>
     </div>
   );

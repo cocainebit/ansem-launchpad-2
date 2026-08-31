@@ -9,6 +9,7 @@ import {
   commentSignAction,
   dmSendSignAction,
   dmReadSignAction,
+  notificationsReadSignAction,
   claimUsernameSignAction,
   bindWalletSignAction,
 } from "@/lib/social-sign";
@@ -666,5 +667,135 @@ export function useDmInbox(signer: Signer) {
     staleTime: 10_000,
     refetchOnWindowFocus: false,
     retry: false,
+  });
+}
+
+// ── in-app notifications ──────────────────────────────────────────────────────
+//
+// A notification is produced only as a SIDE EFFECT of another social write (a
+// follow, a like / repost / reply on your post, a DM, or an @mention). Like DMs,
+// a wallet's notifications are private: every read/mark is a signed request that
+// proves ownership of `me`, and the Next route passes only that VERIFIED address
+// to the indexer. To avoid prompting on every 30s poll, ONE read-proof is signed
+// (on a deliberate gesture — opening the bell) and cached, then reused for both
+// the poll and the mark-read write until it nears the server's replay window.
+
+export type Notification = {
+  id: string;
+  /** follow | like | repost | reply | comment | mention | dm */
+  kind: string;
+  /** Who caused it. */
+  actor?: string;
+  /** The post it concerns (reply / like / repost / mention-in-post). */
+  postId?: string;
+  /** For a `dm`, the sender — so a click can open that conversation. */
+  dmPeer?: string;
+  /** Short text snippet (reply / mention / dm). */
+  preview?: string;
+  read: boolean;
+  createdAt: number;
+};
+
+type NotifFeed = { items: Notification[]; unread: number };
+
+/** A cached read-proof (signature + its timestamp) for one address. */
+type NotifAuth = { sig: SocialSignature; ts: number };
+
+// Kept below the server's 5-min replay window (AUTH_MAX_AGE_MS) so a reused
+// signature is never rejected as stale.
+const NOTIF_AUTH_TTL_MS = 4 * 60_000;
+const notifAuthCache = new Map<string, NotifAuth>();
+
+function cachedNotifAuth(address: string): NotifAuth | null {
+  const a = notifAuthCache.get(address);
+  if (a && Date.now() - a.ts < NOTIF_AUTH_TTL_MS) return a;
+  return null;
+}
+
+/**
+ * Return a fresh cached read-proof for `signer`, signing one (which prompts the
+ * wallet) only when none is cached or it has expired. Call this on a deliberate
+ * user gesture (opening the bell); the poll then reuses the cache silently.
+ */
+export async function ensureNotifAuth(signer: Signer): Promise<NotifAuth> {
+  const address = signer.address;
+  if (!address) throw new Error("Connect a wallet first.");
+  const cached = cachedNotifAuth(address);
+  if (cached) return cached;
+  const ts = Date.now();
+  const sig = await signer.signSocial(authMessage(notificationsReadSignAction(), ts));
+  const auth: NotifAuth = { sig, ts };
+  notifAuthCache.set(address, auth);
+  return auth;
+}
+
+async function fetchNotifFeed(me: string, auth: NotifAuth, limit: number): Promise<NotifFeed> {
+  const r = await fetch("/api/social/notifications", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ me, limit, ts: auth.ts, ...auth.sig }),
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Could not load notifications");
+  return (await r.json()) as NotifFeed;
+}
+
+/**
+ * The polling query behind both notification hooks. It NEVER prompts the wallet:
+ * it fetches only when a cached read-proof already exists (created by opening the
+ * bell), and otherwise throws so react-query keeps the prior data. So a connected
+ * wallet is never prompted on page load or on a background poll — only the badge
+ * count stays at its last value until the bell is opened to (re)sign.
+ */
+function useNotifFeedQuery<T>(signer: Signer, select: (f: NotifFeed) => T, limit = 30) {
+  const me = signer.address ?? "";
+  return useQuery({
+    queryKey: ["social", "notif", me],
+    queryFn: async (): Promise<NotifFeed> => {
+      const auth = cachedNotifAuth(me);
+      if (!auth) throw new Error("notif-auth-needed");
+      return fetchNotifFeed(me, auth, limit);
+    },
+    enabled: Boolean(me),
+    select,
+    refetchInterval: 30_000,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+}
+
+/** The caller's notifications, newest-first. Polls every 30s once authed. */
+export function useNotifications(signer: Signer, limit = 30) {
+  return useNotifFeedQuery(signer, (f) => f.items, limit);
+}
+
+/** The caller's unread count (0 until the bell is opened once). Polls every 30s. */
+export function useUnreadCount(signer: Signer): number {
+  const q = useNotifFeedQuery(signer, (f) => f.unread);
+  return q.data ?? 0;
+}
+
+/**
+ * Mark notifications read (all of the caller's unread when `ids` is omitted).
+ * Reuses the cached read-proof. On success, refetches the feed so the badge and
+ * list reflect the change.
+ */
+export function useMarkNotificationsRead() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ signer, ids }: { signer: Signer; ids?: string[] }) => {
+      const me = signer.address;
+      if (!me) throw new Error("Connect a wallet first.");
+      const auth = await ensureNotifAuth(signer);
+      const r = await fetch("/api/social/notifications/read", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ me, ids, ts: auth.ts, ...auth.sig }),
+      });
+      if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Could not update notifications");
+      return ((await r.json()) as { marked: number }).marked;
+    },
+    onSuccess: (_m, { signer }) => {
+      void qc.invalidateQueries({ queryKey: ["social", "notif", signer.address ?? ""] });
+    },
   });
 }

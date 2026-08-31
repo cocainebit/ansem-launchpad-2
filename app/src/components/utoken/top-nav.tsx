@@ -6,6 +6,7 @@ import { REST_URL } from "@/lib/floorlaunch/config";
 import { MagnifyingGlass, Plus, XLogo, BookOpen } from "@phosphor-icons/react";
 import { useTokens } from "@/hooks/use-tokens";
 import { ConnectButton } from "@/components/wallet/connect-button";
+import { NotificationsBell } from "@/components/social/notifications-bell";
 import { DEFAULT_TOKEN_SUPPLY } from "@/lib/chain-config";
 import { useCommandSearch } from "@/components/utoken/command-search";
 
@@ -164,6 +165,8 @@ export function TopNav({ squareCorners = false }: { squareCorners?: boolean }) {
         >
           <Plus size={15} weight="bold" /> Launch
         </Link>
+
+        <NotificationsBell />
 
         <ConnectButton
           label="Connect"

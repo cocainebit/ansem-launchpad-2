@@ -102,6 +102,18 @@ export function dmReadSignAction(): string {
   return "dm-read";
 }
 
+/**
+ * Read (or mark-read) the caller's notifications. Like dmReadSignAction it binds
+ * nothing but the action + ts: the signature proves the caller owns the address,
+ * and the Next route passes only that VERIFIED address to the indexer, so a
+ * signed read/mark can only ever touch the signer's own notifications. One
+ * cached signature is reused for both the read poll and the mark-read write
+ * within the replay window, so the wallet is prompted at most once per window.
+ */
+export function notificationsReadSignAction(): string {
+  return "notif-read";
+}
+
 /*
  * ── On-chain canonical message ───────────────────────────────────────────────
  *
