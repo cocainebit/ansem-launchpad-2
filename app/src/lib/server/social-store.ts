@@ -96,6 +96,18 @@ type DB = {
 const DATA_DIR = path.join(process.cwd(), ".data");
 const DB_PATH = path.join(DATA_DIR, "social.json");
 
+// Profiles persist to the indexer's Postgres (persistent, works on a
+// serverless read-only filesystem where the disk store below cannot). When
+// SOCIAL_WRITE_TOKEN is set, the four profile functions use the remote store;
+// otherwise they fall back to the local disk store (dev convenience).
+const SOCIAL_API_BASE = (
+  process.env.SOCIAL_API_BASE ??
+  process.env.NEXT_PUBLIC_INDEXER_HTTP ??
+  "https://api.ansemchain.fun/api"
+).replace(/\/$/, "");
+const SOCIAL_WRITE_TOKEN = process.env.SOCIAL_WRITE_TOKEN ?? "";
+const useRemoteProfiles = SOCIAL_WRITE_TOKEN.length > 0;
+
 let cache: DB | null = null;
 /**
  * Mtime of the on-disk file that `cache` was built from. Next.js bundles each
@@ -197,6 +209,11 @@ function withWrite<T>(fn: (db: DB) => T | Promise<T>): Promise<T> {
 // ── reads ───────────────────────────────────────────────────────────────────
 
 export async function getProfile(address: string): Promise<Profile> {
+  if (useRemoteProfiles) {
+    const res = await fetch(`${SOCIAL_API_BASE}/social/profile/${address}`, { cache: "no-store" });
+    if (!res.ok) return {};
+    return ((await res.json()) as { profile?: Profile }).profile ?? {};
+  }
   const db = await load();
   return db.profiles[address] ?? {};
 }
@@ -220,7 +237,21 @@ export async function isFollowing(follower: string, target: string): Promise<boo
 
 // ── writes ──────────────────────────────────────────────────────────────────
 
-export function upsertProfile(address: string, profile: Profile): Promise<Profile> {
+export async function upsertProfile(address: string, profile: Profile): Promise<Profile> {
+  if (useRemoteProfiles) {
+    const res = await fetch(`${SOCIAL_API_BASE}/social/profile`, {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${SOCIAL_WRITE_TOKEN}` },
+      body: JSON.stringify({ address, profile }),
+    });
+    const data = (await res.json().catch(() => ({}))) as { profile?: Profile; error?: string; code?: string };
+    if (!res.ok) {
+      if (data.code === "username_taken") throw new SocialError("username_taken", data.error ?? "username taken");
+      if (data.code === "username_invalid") throw new SocialError("username_invalid", data.error ?? "invalid username");
+      throw new Error(data.error ?? `profile store HTTP ${res.status}`);
+    }
+    return data.profile ?? {};
+  }
   return withWrite((db) => {
     const next: Profile = { ...profile, updatedAt: Date.now() };
 
@@ -256,6 +287,11 @@ export function upsertProfile(address: string, profile: Profile): Promise<Profil
 
 /** Resolve a handle (with or without leading @) to its bound address, or null. */
 export async function resolveUsername(raw: string): Promise<string | null> {
+  if (useRemoteProfiles) {
+    const res = await fetch(`${SOCIAL_API_BASE}/social/resolve/${encodeURIComponent(canonicalUsername(raw))}`, { cache: "no-store" });
+    if (!res.ok) return null;
+    return ((await res.json()) as { address?: string | null }).address ?? null;
+  }
   const db = await load();
   const handle = canonicalUsername(raw);
   return db.usernames[handle] ?? null;
@@ -265,6 +301,11 @@ export type ProfileHit = { address: string } & Profile;
 
 /** Search profiles by username, display name, or address prefix. */
 export async function searchProfiles(query: string, limit = 8): Promise<ProfileHit[]> {
+  if (useRemoteProfiles) {
+    const res = await fetch(`${SOCIAL_API_BASE}/social/search?q=${encodeURIComponent(query)}&limit=${limit}`, { cache: "no-store" });
+    if (!res.ok) return [];
+    return ((await res.json()) as { hits?: ProfileHit[] }).hits ?? [];
+  }
   const db = await load();
   const q = query.trim().toLowerCase();
   if (!q) return [];
