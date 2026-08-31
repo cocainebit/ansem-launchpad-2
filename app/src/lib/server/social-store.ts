@@ -107,6 +107,22 @@ const SOCIAL_API_BASE = (
 ).replace(/\/$/, "");
 const SOCIAL_WRITE_TOKEN = process.env.SOCIAL_WRITE_TOKEN ?? "";
 const useRemoteProfiles = SOCIAL_WRITE_TOKEN.length > 0;
+// The rest of the SocialFi layer (follow graph, posts/feed, likes/reposts/
+// replies, comments) persists to the same indexer Postgres under the same
+// condition. Reads hit the public GET routes; writes POST with the bearer.
+const useRemoteSocial = SOCIAL_WRITE_TOKEN.length > 0;
+
+/** Bearer-authenticated POST to a social write endpoint. */
+async function socialWrite<T>(path: string, body: unknown): Promise<T> {
+  const res = await fetch(`${SOCIAL_API_BASE}${path}`, {
+    method: "POST",
+    headers: { "content-type": "application/json", authorization: `Bearer ${SOCIAL_WRITE_TOKEN}` },
+    body: JSON.stringify(body),
+  });
+  const data = (await res.json().catch(() => ({}))) as T & { error?: string };
+  if (!res.ok) throw new Error((data as { error?: string }).error ?? `social store HTTP ${res.status}`);
+  return data;
+}
 
 let cache: DB | null = null;
 /**
@@ -224,6 +240,21 @@ export async function getGraph(address: string): Promise<{
   followerCount: number;
   followingCount: number;
 }> {
+  if (useRemoteSocial) {
+    const res = await fetch(`${SOCIAL_API_BASE}/social/graph/${address}`, { cache: "no-store" });
+    if (!res.ok) return { followers: [], following: [], followerCount: 0, followingCount: 0 };
+    const d = (await res.json()) as {
+      followers?: string[]; following?: string[]; followerCount?: number; followingCount?: number;
+    };
+    const followers = d.followers ?? [];
+    const following = d.following ?? [];
+    return {
+      followers,
+      following,
+      followerCount: d.followerCount ?? followers.length,
+      followingCount: d.followingCount ?? following.length,
+    };
+  }
   const db = await load();
   const following = db.follows[address] ?? [];
   const followers = Object.keys(db.follows).filter((f) => (db.follows[f] ?? []).includes(address));
@@ -231,6 +262,14 @@ export async function getGraph(address: string): Promise<{
 }
 
 export async function isFollowing(follower: string, target: string): Promise<boolean> {
+  if (useRemoteSocial) {
+    const res = await fetch(
+      `${SOCIAL_API_BASE}/social/is-following?follower=${encodeURIComponent(follower)}&target=${encodeURIComponent(target)}`,
+      { cache: "no-store" },
+    );
+    if (!res.ok) return false;
+    return ((await res.json()) as { following?: boolean }).following ?? false;
+  }
   const db = await load();
   return (db.follows[follower] ?? []).includes(target);
 }
@@ -328,6 +367,11 @@ export async function searchProfiles(query: string, limit = 8): Promise<ProfileH
 }
 
 export function setFollow(follower: string, target: string, follow: boolean): Promise<boolean> {
+  if (useRemoteSocial) {
+    return socialWrite<{ following?: boolean }>("/social/follow", { follower, target, follow }).then(
+      (d) => d.following ?? follow,
+    );
+  }
   return withWrite((db) => {
     const set = new Set(db.follows[follower] ?? []);
     const wasFollowing = set.has(target);
@@ -343,6 +387,14 @@ export function setFollow(follower: string, target: string, follow: boolean): Pr
 }
 
 export async function listFollowEvents(opts: { target?: string; limit?: number }): Promise<FollowEvent[]> {
+  if (useRemoteSocial) {
+    const qs = new URLSearchParams();
+    if (opts.target) qs.set("target", opts.target);
+    if (opts.limit != null) qs.set("limit", String(opts.limit));
+    const res = await fetch(`${SOCIAL_API_BASE}/social/follow-events?${qs.toString()}`, { cache: "no-store" });
+    if (!res.ok) return [];
+    return ((await res.json()) as { events?: FollowEvent[] }).events ?? [];
+  }
   const db = await load();
   const limit = Math.min(opts.limit ?? 50, 200);
   let list = db.followEvents;
@@ -361,6 +413,15 @@ export async function listPosts(opts: {
   limit?: number;
   viewer?: string;
 }): Promise<PostWithMeta[]> {
+  if (useRemoteSocial) {
+    const qs = new URLSearchParams();
+    if (opts.author) qs.set("author", opts.author);
+    if (opts.viewer) qs.set("viewer", opts.viewer);
+    if (opts.limit != null) qs.set("limit", String(opts.limit));
+    const res = await fetch(`${SOCIAL_API_BASE}/social/posts?${qs.toString()}`, { cache: "no-store" });
+    if (!res.ok) return [];
+    return ((await res.json()) as { posts?: PostWithMeta[] }).posts ?? [];
+  }
   const db = await load();
   const limit = Math.min(opts.limit ?? 50, 200);
   let list = db.posts;
@@ -400,6 +461,17 @@ export function addPost(
   text: string,
   opts?: PostOpts & { onchainId?: string; txhash?: string },
 ): Promise<Post> {
+  if (useRemoteSocial) {
+    return socialWrite<{ post?: Post }>("/social/post", {
+      author,
+      text,
+      image: opts?.image,
+      token: opts?.token,
+      quoteOf: opts?.quoteOf,
+      onchainId: opts?.onchainId,
+      txhash: opts?.txhash,
+    }).then((d) => d.post ?? { id: newId(), author, text, createdAt: Date.now() });
+  }
   return withWrite((db) => {
     const post: Post = { id: newId(), author, text, createdAt: Date.now() };
     if (opts?.image) post.image = opts.image;
@@ -414,6 +486,11 @@ export function addPost(
 
 /** Does a post with this id exist? (used to validate a quoteOf target). */
 export async function postExists(id: string): Promise<boolean> {
+  if (useRemoteSocial) {
+    const res = await fetch(`${SOCIAL_API_BASE}/social/post-exists/${encodeURIComponent(id)}`, { cache: "no-store" });
+    if (!res.ok) return false;
+    return ((await res.json()) as { exists?: boolean }).exists ?? false;
+  }
   const db = await load();
   return db.posts.some((p) => p.id === id);
 }
@@ -424,6 +501,12 @@ export async function postExists(id: string): Promise<boolean> {
  * /post/[id] detail view.
  */
 export async function getPost(id: string, viewer?: string): Promise<PostWithMeta | null> {
+  if (useRemoteSocial) {
+    const qs = viewer ? `?viewer=${encodeURIComponent(viewer)}` : "";
+    const res = await fetch(`${SOCIAL_API_BASE}/social/post/${encodeURIComponent(id)}${qs}`, { cache: "no-store" });
+    if (!res.ok) return null;
+    return ((await res.json()) as { post?: PostWithMeta | null }).post ?? null;
+  }
   const db = await load();
   const p = db.posts.find((x) => x.id === id);
   if (!p) return null;
@@ -434,6 +517,11 @@ export async function getPost(id: string, viewer?: string): Promise<PostWithMeta
 
 /** Toggle a viewer's like on a post. Returns the new like count. */
 export function togglePostLike(postId: string, user: string, like: boolean): Promise<{ count: number }> {
+  if (useRemoteSocial) {
+    return socialWrite<{ count?: number }>("/social/post-like", { postId, user, like }).then((d) => ({
+      count: d.count ?? 0,
+    }));
+  }
   return withWrite((db) => {
     const set = new Set(db.postLikes[postId] ?? []);
     if (like) set.add(user);
@@ -449,6 +537,11 @@ export function togglePostRepost(
   user: string,
   repost: boolean,
 ): Promise<{ count: number }> {
+  if (useRemoteSocial) {
+    return socialWrite<{ count?: number }>("/social/post-repost", { postId, user, repost }).then((d) => ({
+      count: d.count ?? 0,
+    }));
+  }
   return withWrite((db) => {
     const set = new Set(db.postReposts[postId] ?? []);
     if (repost) set.add(user);
@@ -464,6 +557,15 @@ export function addPostReply(
   text: string,
   onchain?: { onchainId?: string; txhash?: string },
 ): Promise<Post> {
+  if (useRemoteSocial) {
+    return socialWrite<{ reply?: Post }>("/social/post-reply", {
+      postId,
+      author,
+      text,
+      onchainId: onchain?.onchainId,
+      txhash: onchain?.txhash,
+    }).then((d) => d.reply ?? { id: newId(), author, text, createdAt: Date.now() });
+  }
   return withWrite((db) => {
     const reply: Post = { id: newId(), author, text, createdAt: Date.now() };
     if (onchain?.onchainId) reply.onchainId = onchain.onchainId;
@@ -475,18 +577,39 @@ export function addPostReply(
 }
 
 export async function listPostReplies(postId: string, limit = 100): Promise<Post[]> {
+  if (useRemoteSocial) {
+    const res = await fetch(
+      `${SOCIAL_API_BASE}/social/replies?postId=${encodeURIComponent(postId)}&limit=${limit}`,
+      { cache: "no-store" },
+    );
+    if (!res.ok) return [];
+    return ((await res.json()) as { replies?: Post[] }).replies ?? [];
+  }
   const db = await load();
   const list = db.postReplies[postId] ?? [];
   return [...list].reverse().slice(0, Math.min(limit, 300));
 }
 
 export async function listComments(token: string, limit = 100): Promise<Post[]> {
+  if (useRemoteSocial) {
+    const res = await fetch(
+      `${SOCIAL_API_BASE}/social/comments/${encodeURIComponent(token)}?limit=${limit}`,
+      { cache: "no-store" },
+    );
+    if (!res.ok) return [];
+    return ((await res.json()) as { comments?: Post[] }).comments ?? [];
+  }
   const db = await load();
   const list = db.comments[token] ?? [];
   return [...list].reverse().slice(0, Math.min(limit, 300));
 }
 
 export function addComment(token: string, author: string, text: string): Promise<Post> {
+  if (useRemoteSocial) {
+    return socialWrite<{ comment?: Post }>("/social/comment", { token, author, text }).then(
+      (d) => d.comment ?? { id: newId(), author, text, token, createdAt: Date.now() },
+    );
+  }
   return withWrite((db) => {
     const comment: Post = { id: newId(), author, text, token, createdAt: Date.now() };
     if (!db.comments[token]) db.comments[token] = [];
