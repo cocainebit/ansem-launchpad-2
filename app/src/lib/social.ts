@@ -7,6 +7,8 @@ import {
   editProfileSignAction,
   followSignAction,
   commentSignAction,
+  dmSendSignAction,
+  dmReadSignAction,
 } from "@/lib/social-sign";
 
 /**
@@ -412,4 +414,133 @@ export async function addComment(token: string, author: string, text: string, si
   });
   if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Could not comment");
   return ((await r.json()) as { comment: Post }).comment;
+}
+
+// ── direct messages (wallet-to-wallet chat) ──────────────────────────────────
+//
+// Privacy: DMs are NOT public. A conversation is readable ONLY by its two
+// participants. Every DM request — the send AND the two reads — carries a wallet
+// signature; the Next route verifies it, then acts only as/for the VERIFIED
+// address. So even a read proves you own the address before it returns a thread.
+// This is server-trust privacy, NOT end-to-end encryption (a future iteration).
+
+export type DmMessage = {
+  id: string;
+  sender: string;
+  recipient: string;
+  text: string;
+  createdAt: number;
+  /** Set once the recipient has read this message. */
+  readAt?: number | null;
+};
+
+export type DmThreadSummary = {
+  /** The other party in the conversation. */
+  peer: string;
+  lastMessage: string;
+  lastAt: number;
+  /** True when the latest message was sent BY the inbox owner. */
+  lastFromMe: boolean;
+  /** Count of unread messages from `peer` to the inbox owner. */
+  unread: number;
+};
+
+/** Send a DM, signed by the sender's wallet (binds recipient + text). */
+export async function sendDm(
+  sender: string,
+  recipient: string,
+  text: string,
+  signer: Signer,
+): Promise<DmMessage> {
+  const ts = Date.now();
+  const sig = await signer.signSocial(authMessage(dmSendSignAction(recipient, text), ts));
+  const r = await fetch("/api/social/dm", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ sender, recipient, text, ts, ...sig }),
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Could not send message");
+  return ((await r.json()) as { message: DmMessage }).message;
+}
+
+/** Read a DM thread with `peer`, proving ownership of `me` via a signed read. */
+async function fetchDmThread(me: string, peer: string, signer: Signer): Promise<DmMessage[]> {
+  const ts = Date.now();
+  const sig = await signer.signSocial(authMessage(dmReadSignAction(), ts));
+  const r = await fetch("/api/social/dm/thread", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ me, peer, ts, ...sig }),
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Could not load messages");
+  return ((await r.json()) as { messages: DmMessage[] }).messages ?? [];
+}
+
+/** Read the caller's inbox, proving ownership of `me` via a signed read. */
+async function fetchDmInbox(me: string, signer: Signer): Promise<DmThreadSummary[]> {
+  const ts = Date.now();
+  const sig = await signer.signSocial(authMessage(dmReadSignAction(), ts));
+  const r = await fetch("/api/social/dm/inbox", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ me, ts, ...sig }),
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Could not load inbox");
+  return ((await r.json()) as { threads: DmThreadSummary[] }).threads ?? [];
+}
+
+/**
+ * Send a DM. On success, invalidates the open thread + inbox so they refetch.
+ * The signer is passed in the mutation variables (same flow as like/repost/reply).
+ */
+export function useSendDm() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      sender,
+      recipient,
+      text,
+      signer,
+    }: {
+      sender: string;
+      recipient: string;
+      text: string;
+      signer: Signer;
+    }) => sendDm(sender, recipient, text, signer),
+    onSuccess: (_d, { recipient }) => {
+      void qc.invalidateQueries({ queryKey: ["social", "dm", "thread", recipient] });
+      void qc.invalidateQueries({ queryKey: ["social", "dm", "inbox"] });
+    },
+  });
+}
+
+/**
+ * A DM thread with `peer`, oldest->newest. Each fetch signs a read-proof, so this
+ * does NOT auto-poll (that would prompt the wallet repeatedly); it refetches on
+ * mount / manual invalidation (e.g. after sending). `signer` carries the viewer
+ * identity + the signSocial function.
+ */
+export function useDmThread(peer: string, signer: Signer) {
+  const me = signer.address ?? "";
+  return useQuery({
+    queryKey: ["social", "dm", "thread", peer, me],
+    queryFn: () => fetchDmThread(me, peer, signer),
+    enabled: Boolean(peer && me),
+    staleTime: 10_000,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
+}
+
+/** The caller's DM inbox, most-recent thread first. Same signed-read model. */
+export function useDmInbox(signer: Signer) {
+  const me = signer.address ?? "";
+  return useQuery({
+    queryKey: ["social", "dm", "inbox", me],
+    queryFn: () => fetchDmInbox(me, signer),
+    enabled: Boolean(me),
+    staleTime: 10_000,
+    refetchOnWindowFocus: false,
+    retry: false,
+  });
 }

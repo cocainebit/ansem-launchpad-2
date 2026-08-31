@@ -26,7 +26,7 @@ import { useFloorWallet } from "@/components/wallet/solana-wallet-provider";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { REST_URL, BASE_DENOMS } from "@/lib/floorlaunch/config";
-import { TelegramLogo, PencilSimple, UserPlus } from "@phosphor-icons/react";
+import { TelegramLogo, PencilSimple, UserPlus, ChatCircle } from "@phosphor-icons/react";
 
 type Tab = "posts" | "holdings" | "launches" | "activity";
 
@@ -210,18 +210,26 @@ export default function CreatorPage() {
                   <PencilSimple size={14} weight="bold" /> Edit profile
                 </button>
               ) : (
-                <button
-                  type="button"
-                  onClick={handleFollow}
-                  disabled={followBusy}
-                  className={`inline-flex h-9 items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-semibold transition-colors disabled:opacity-60 ${
-                    graph?.viewerFollows
-                      ? "border border-[var(--hairline-strong)] bg-transparent text-zinc-200 hover:border-[#ff5b5b]/50 hover:text-[#ff5b5b]"
-                      : "bg-[#6cf07f] text-black hover:opacity-90"
-                  }`}
-                >
-                  <UserPlus size={14} weight="bold" /> {graph?.viewerFollows ? "Following" : "Follow"}
-                </button>
+                <>
+                  <Link
+                    href={`/messages?peer=${encodeURIComponent(address)}`}
+                    className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[var(--hairline)] bg-[#202022] px-3 text-[13px] font-medium text-zinc-300 transition-colors hover:border-[var(--hairline-strong)] hover:text-white"
+                  >
+                    <ChatCircle size={14} weight="bold" /> Message
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={handleFollow}
+                    disabled={followBusy}
+                    className={`inline-flex h-9 items-center gap-1.5 rounded-lg px-3.5 text-[13px] font-semibold transition-colors disabled:opacity-60 ${
+                      graph?.viewerFollows
+                        ? "border border-[var(--hairline-strong)] bg-transparent text-zinc-200 hover:border-[#ff5b5b]/50 hover:text-[#ff5b5b]"
+                        : "bg-[#6cf07f] text-black hover:opacity-90"
+                    }`}
+                  >
+                    <UserPlus size={14} weight="bold" /> {graph?.viewerFollows ? "Following" : "Follow"}
+                  </button>
+                </>
               )}
             </div>
           </div>
@@ -284,9 +292,13 @@ export default function CreatorPage() {
               >
                 <span className="font-semibold text-zinc-200">{graph?.followingCount ?? 0}</span> following
               </button>
-              <span className="text-zinc-500">
+              <button
+                type="button"
+                onClick={() => setTab("launches")}
+                className="text-zinc-500 transition-colors hover:text-zinc-200"
+              >
                 <span className="font-semibold text-zinc-200">{launches.length}</span> {launches.length === 1 ? "launch" : "launches"}
-              </span>
+              </button>
             </div>
           </div>
         </div>

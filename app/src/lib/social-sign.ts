@@ -63,6 +63,24 @@ export function replySignAction(postId: string, text: string): string {
   return `reply-post:${postId}:${text}`;
 }
 
+/**
+ * Send a direct message. Binds the recipient + the exact message text so the
+ * sender's signature proves both WHO they are and WHAT they sent to WHOM.
+ */
+export function dmSendSignAction(recipient: string, text: string): string {
+  return `dm:${recipient}:${text}`;
+}
+
+/**
+ * Read DMs (a thread or the inbox). Binds nothing but the action + ts (added by
+ * socialAuthMessage), which is enough: the signature proves the caller owns the
+ * address, and the Next route passes only that VERIFIED address to the indexer,
+ * so a signed read can only ever read the signer's own conversations.
+ */
+export function dmReadSignAction(): string {
+  return "dm-read";
+}
+
 /*
  * ── On-chain canonical message ───────────────────────────────────────────────
  *

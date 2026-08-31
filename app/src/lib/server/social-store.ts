@@ -64,6 +64,30 @@ export type PostOpts = { image?: string; token?: string; quoteOf?: string };
 
 export type FollowEvent = { follower: string; target: string; createdAt: number };
 
+/**
+ * A direct message (wallet-to-wallet chat). Unlike a Post, a DM is private: it
+ * is readable only by its sender or recipient. That privacy is server-trust,
+ * NOT end-to-end encryption (the text is stored in plaintext); E2E is a future
+ * iteration. `readAt` is set when the recipient has read the message.
+ */
+export type Message = {
+  id: string;
+  sender: string;
+  recipient: string;
+  text: string;
+  createdAt: number;
+  readAt?: number | null;
+};
+
+/** One inbox row: a conversation partner + the latest message + unread count. */
+export type DmThreadSummary = {
+  peer: string;
+  lastMessage: string;
+  lastAt: number;
+  lastFromMe: boolean;
+  unread: number;
+};
+
 /** A post plus its engagement counts (and viewer flags when a viewer is given). */
 export type PostWithMeta = Post & {
   likeCount: number;
@@ -91,6 +115,8 @@ type DB = {
   postReposts: Record<string, string[]>;
   /** post id -> replies, newest last */
   postReplies: Record<string, Post[]>;
+  /** direct messages (all conversations), newest last */
+  dms: Message[];
 };
 
 const DATA_DIR = path.join(process.cwd(), ".data");
@@ -124,6 +150,22 @@ async function socialWrite<T>(path: string, body: unknown): Promise<T> {
   return data;
 }
 
+/**
+ * Bearer-authenticated GET to a social read endpoint. Used for DM reads, which
+ * (unlike public post/profile reads) are bearer-gated because they carry an
+ * app-verified caller identity — a random public read of a private thread must
+ * be impossible. `path` includes the query string.
+ */
+async function socialReadAuthed<T>(path: string): Promise<T> {
+  const res = await fetch(`${SOCIAL_API_BASE}${path}`, {
+    headers: { authorization: `Bearer ${SOCIAL_WRITE_TOKEN}` },
+    cache: "no-store",
+  });
+  const data = (await res.json().catch(() => ({}))) as T & { error?: string };
+  if (!res.ok) throw new Error((data as { error?: string }).error ?? `social store HTTP ${res.status}`);
+  return data;
+}
+
 let cache: DB | null = null;
 /**
  * Mtime of the on-disk file that `cache` was built from. Next.js bundles each
@@ -149,6 +191,7 @@ function emptyDB(): DB {
     postLikes: {},
     postReposts: {},
     postReplies: {},
+    dms: [],
   };
 }
 
@@ -163,6 +206,7 @@ function normalize(db: DB): DB {
   if (!db.postLikes) db.postLikes = {};
   if (!db.postReposts) db.postReposts = {};
   if (!db.postReplies) db.postReplies = {};
+  if (!db.dms) db.dms = [];
   return db;
 }
 
@@ -616,4 +660,82 @@ export function addComment(token: string, author: string, text: string): Promise
     db.comments[token].push(comment);
     return comment;
   });
+}
+
+// ── direct messages (wallet-to-wallet chat) ──────────────────────────────────
+//
+// Privacy is server-trust, NOT end-to-end encryption: the Next.js route verifies
+// the caller's ADR-36 signature and forwards only the VERIFIED address, so a DM
+// thread is reachable solely by its two participants. Both the send AND the two
+// reads carry the bearer, since a read also carries an app-verified identity.
+// E2E encryption is a future iteration.
+
+/** Send a DM from `sender` (already verified upstream) to `recipient`. */
+export function sendDm(sender: string, recipient: string, text: string): Promise<Message> {
+  if (useRemoteSocial) {
+    return socialWrite<{ message?: Message }>("/social/dm", { sender, recipient, text }).then(
+      (d) => d.message ?? { id: newId(), sender, recipient, text, createdAt: Date.now() },
+    );
+  }
+  return withWrite((db) => {
+    const message: Message = { id: newId(), sender, recipient, text, createdAt: Date.now(), readAt: null };
+    db.dms.push(message);
+    return message;
+  });
+}
+
+/**
+ * The conversation between `me` and `peer`, oldest->newest (chat order). Marks
+ * peer->me messages read as a side effect of the me-authenticated read.
+ */
+export async function getDmThread(me: string, peer: string, limit = 200): Promise<Message[]> {
+  if (useRemoteSocial) {
+    const qs = new URLSearchParams({ me, peer, limit: String(limit) });
+    const d = await socialReadAuthed<{ messages?: Message[] }>(`/social/dm/thread?${qs.toString()}`);
+    return d.messages ?? [];
+  }
+  return withWrite((db) => {
+    const now = Date.now();
+    for (const m of db.dms) {
+      if (m.recipient === me && m.sender === peer && m.readAt == null) m.readAt = now;
+    }
+    const pair = db.dms.filter(
+      (m) =>
+        (m.sender === me && m.recipient === peer) ||
+        (m.sender === peer && m.recipient === me),
+    );
+    // Take the most-recent `limit`, then present oldest->newest.
+    return pair
+      .slice(-Math.min(limit, 500))
+      .sort((a, b) => a.createdAt - b.createdAt);
+  });
+}
+
+/** The inbox for `me`: one summary per conversation partner, most-recent first. */
+export async function getDmInbox(me: string, limit = 100): Promise<DmThreadSummary[]> {
+  if (useRemoteSocial) {
+    const qs = new URLSearchParams({ me, limit: String(limit) });
+    const d = await socialReadAuthed<{ threads?: DmThreadSummary[] }>(`/social/dm/inbox?${qs.toString()}`);
+    return d.threads ?? [];
+  }
+  const db = await load();
+  const byPeer = new Map<string, { last: Message; unread: number }>();
+  for (const m of db.dms) {
+    if (m.sender !== me && m.recipient !== me) continue;
+    const peer = m.sender === me ? m.recipient : m.sender;
+    const cur = byPeer.get(peer) ?? { last: m, unread: 0 };
+    if (m.createdAt >= cur.last.createdAt) cur.last = m;
+    if (m.recipient === me && m.sender === peer && m.readAt == null) cur.unread += 1;
+    byPeer.set(peer, cur);
+  }
+  return [...byPeer.entries()]
+    .map(([peer, { last, unread }]) => ({
+      peer,
+      lastMessage: last.text,
+      lastAt: last.createdAt,
+      lastFromMe: last.sender === me,
+      unread,
+    }))
+    .sort((a, b) => b.lastAt - a.lastAt)
+    .slice(0, Math.min(limit, 300));
 }
