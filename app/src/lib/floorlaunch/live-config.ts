@@ -20,13 +20,19 @@ import {
   getHornVaultAddress,
 } from "./config";
 
-// The ONE mutable-address anchor baked at build time. Default = the current
-// live registry. The genesis-proof launch value (instantiate2 + fixed salt,
-// survives any regenesis) is:
-//   ansem1uruc2ue7wqvy83yysspe6afrwu02fuz4g0mxffuz3tssljakxu0qt57u4l
-export const REGISTRY_CONTRACT =
-  process.env.NEXT_PUBLIC_ANSEM_REGISTRY ??
-  "ansem1vguuxez2h5ekltfj9gjd62fs5k4rl2zy5hfrncasykzw08rezpfs766uxe";
+// Registry candidates, tried IN ORDER; the first that answers {config:{}} wins.
+// [0] the genesis-proof anchor: deterministic instantiate2 (fixed salt +
+//     deployer + config wasm checksum), byte-identical across every regenesis.
+//     Live since the 2026-08-31 launch.
+// [1] the OLD classic-instantiate registry from the pre-launch testnet. It did
+//     NOT survive the launch regenesis (classic addresses are sequence-derived)
+//     but is kept as a fallback for any environment still running the old chain.
+// An env override, when set, is tried before both.
+const REGISTRY_CANDIDATES = [
+  process.env.NEXT_PUBLIC_ANSEM_REGISTRY,
+  "ansem1uruc2ue7wqvy83yysspe6afrwu02fuz4g0mxffuz3tssljakxu0qt57u4l",
+  "ansem1vguuxez2h5ekltfj9gjd62fs5k4rl2zy5hfrncasykzw08rezpfs766uxe",
+].filter((a): a is string => Boolean(a));
 
 export interface RegistryConfig {
   version: number;
@@ -61,12 +67,26 @@ function b64(s: string): string {
 
 async function fetchRegistry(): Promise<RegistryConfig> {
   const query = b64(JSON.stringify({ config: {} }));
-  const url = `${REST_URL.replace(/\/$/, "")}/cosmwasm/wasm/v1/contract/${REGISTRY_CONTRACT}/smart/${query}`;
-  const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error(`config registry HTTP ${res.status}`);
-  const json = (await res.json()) as { data?: Record<string, unknown> };
-  const d = json.data;
-  if (!d) throw new Error("config registry response missing data");
+  let lastErr: Error = new Error("no registry candidates");
+  for (const contract of REGISTRY_CANDIDATES) {
+    const url = `${REST_URL.replace(/\/$/, "")}/cosmwasm/wasm/v1/contract/${contract}/smart/${query}`;
+    let json: { data?: Record<string, unknown> };
+    try {
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) throw new Error(`config registry HTTP ${res.status}`);
+      json = (await res.json()) as { data?: Record<string, unknown> };
+      if (!json.data) throw new Error("config registry response missing data");
+    } catch (e) {
+      // A dead candidate (regenesis'd-away contract) 500s; fall through.
+      lastErr = e instanceof Error ? e : new Error(String(e));
+      continue;
+    }
+    return parseRegistry(json.data);
+  }
+  throw lastErr;
+}
+
+function parseRegistry(d: Record<string, unknown>): RegistryConfig {
   return {
     version: Number(d.version ?? 0),
     ammContract: String(d.amm_contract ?? ""),
