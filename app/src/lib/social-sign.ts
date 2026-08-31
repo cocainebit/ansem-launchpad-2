@@ -72,6 +72,15 @@ export function dmSendSignAction(recipient: string, text: string): string {
 }
 
 /**
+ * Claim a reserved username. Binds the exact one-time token so the signature
+ * cannot be replayed to claim a DIFFERENT token, and a captured claim request
+ * for one token proves nothing about another. The signer becomes the owner.
+ */
+export function claimUsernameSignAction(token: string): string {
+  return `claim:${token}`;
+}
+
+/**
  * Read DMs (a thread or the inbox). Binds nothing but the action + ts (added by
  * socialAuthMessage), which is enough: the signature proves the caller owns the
  * address, and the Next route passes only that VERIFIED address to the indexer,

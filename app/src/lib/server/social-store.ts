@@ -20,6 +20,9 @@ export type Profile = {
   banner?: string;
   twitter?: string;
   telegram?: string;
+  /** A verified badge. Set ONLY via the reserve/claim path (a reservation's
+   *  preset), never through a normal self-edit profile save. */
+  verified?: boolean;
   updatedAt?: number;
 };
 
@@ -366,6 +369,25 @@ export async function upsertProfile(address: string, profile: Profile): Promise<
     db.profiles[address] = next;
     return next;
   });
+}
+
+/**
+ * Claim a reserved username with its one-time token, binding the reserved handle
+ * + preset (and any verified badge) to `address`. The signature was already
+ * verified by the Next route; we forward with the bearer to the remote store,
+ * which consumes the token in one transaction and returns the resulting profile.
+ * Claims require the remote (Postgres) store; the disk fallback cannot serve
+ * them, so it throws.
+ */
+export async function claimUsername(address: string, token: string): Promise<Profile> {
+  if (!useRemoteProfiles) {
+    throw new Error("claims require the remote store");
+  }
+  const data = await socialWrite<{ profile?: Profile; error?: string }>("/social/claim", {
+    token,
+    address,
+  });
+  return data.profile ?? {};
 }
 
 /** Resolve a handle (with or without leading @) to its bound address, or null. */

@@ -9,6 +9,7 @@ import {
   Check,
   CopySimple,
   Horse,
+  SealCheck,
   ShareNetwork,
   User,
   XLogo,
@@ -236,7 +237,12 @@ export default function CreatorPage() {
 
           {/* Identity - inset to match the avatar so the name lines up under it */}
           <div className="mt-3 max-w-2xl pl-4 sm:pl-6">
-            <h1 className="font-display text-[24px] font-semibold leading-tight tracking-tight text-white">{displayName}</h1>
+            <div className="flex items-center gap-1.5">
+              <h1 className="font-display text-[24px] font-semibold leading-tight tracking-tight text-white">{displayName}</h1>
+              {profile.verified && (
+                <SealCheck size={22} weight="fill" className="shrink-0 text-[#6cf07f]" aria-label="Verified" />
+              )}
+            </div>
             {/* When a username exists, the address sits next to it on one line;
                 otherwise the address stands alone under the name. */}
             <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">

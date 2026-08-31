@@ -9,6 +9,7 @@ import {
   commentSignAction,
   dmSendSignAction,
   dmReadSignAction,
+  claimUsernameSignAction,
 } from "@/lib/social-sign";
 
 /**
@@ -27,6 +28,8 @@ export type Profile = {
   banner?: string;
   twitter?: string;
   telegram?: string;
+  /** A verified badge (set only via the reserve/claim flow). */
+  verified?: boolean;
 };
 
 export type Graph = {
@@ -96,6 +99,38 @@ export async function saveProfile(address: string, profile: Profile, signer: Sig
     throw err;
   }
   return ((await r.json()) as { profile: Profile }).profile;
+}
+
+/**
+ * Claim a reserved username with its one-time token, signed by the acting
+ * wallet. The signature binds the exact token; on success the reserved handle +
+ * preset (and any verified badge) bind to the caller's address.
+ */
+export async function claimUsername(address: string, token: string, signer: Signer): Promise<Profile> {
+  const ts = Date.now();
+  const sig = await signer.signSocial(authMessage(claimUsernameSignAction(token), ts));
+  const r = await fetch("/api/social/claim", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ address, token, ts, ...sig }),
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Could not claim username");
+  return ((await r.json()) as { profile: Profile }).profile;
+}
+
+/**
+ * Claim a reserved username. On success, invalidates the claimer's profile so
+ * the newly bound handle / preset / verified badge show immediately.
+ */
+export function useClaimUsername() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ address, token, signer }: { address: string; token: string; signer: Signer }) =>
+      claimUsername(address, token, signer),
+    onSuccess: (_p, { address }) => {
+      void qc.invalidateQueries({ queryKey: ["social", "profile", address] });
+    },
+  });
 }
 
 export async function setFollow(
