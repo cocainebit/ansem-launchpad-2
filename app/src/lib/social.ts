@@ -10,6 +10,7 @@ import {
   dmSendSignAction,
   dmReadSignAction,
   claimUsernameSignAction,
+  bindWalletSignAction,
 } from "@/lib/social-sign";
 
 /**
@@ -127,6 +128,94 @@ export function useClaimUsername() {
   return useMutation({
     mutationFn: ({ address, token, signer }: { address: string; token: string; signer: Signer }) =>
       claimUsername(address, token, signer),
+    onSuccess: (_p, { address }) => {
+      void qc.invalidateQueries({ queryKey: ["social", "profile", address] });
+    },
+  });
+}
+
+// ── token-as-credential claim (claim without a wallet, bind one later) ────────
+//
+// DELIBERATE, DOCUMENTED EXCEPTION to the wallet-signature identity model. A
+// reserved handle can be claimed with the claim token alone (no wallet); the
+// token then acts as the edit credential for the resulting `token-<username>`
+// account. A real wallet is bound later — THAT step re-introduces a signature.
+
+/**
+ * Claim a reserved username WITHOUT a wallet. The token is the only credential;
+ * the resulting account is owned by a synthetic `token-<username>` id. Returns
+ * the created profile and its ownerId.
+ */
+export async function claimUsernameNoWallet(
+  token: string,
+  profile?: Profile,
+): Promise<{ profile: Profile; ownerId: string }> {
+  const r = await fetch("/api/social/claim-token", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token, profile }),
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Could not claim username");
+  return (await r.json()) as { profile: Profile; ownerId: string };
+}
+
+/**
+ * Edit a token-owned account's profile with the claim token as the credential
+ * (no wallet signature). username + verified are locked server-side.
+ */
+export async function editTokenProfile(token: string, profile: Profile): Promise<Profile> {
+  const r = await fetch("/api/social/token-profile", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ token, profile }),
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Could not save profile");
+  return ((await r.json()) as { profile: Profile }).profile;
+}
+
+/**
+ * Bind a real wallet to a token-owned account. This step DOES require a wallet
+ * signature (binding the exact token): the token proves the account, the
+ * signature proves the new wallet. On success ownership migrates to the wallet
+ * and the token is spent.
+ */
+export async function bindWallet(address: string, token: string, signer: Signer): Promise<Profile> {
+  const ts = Date.now();
+  const sig = await signer.signSocial(authMessage(bindWalletSignAction(token), ts));
+  const r = await fetch("/api/social/bind-wallet", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ address, token, ts, ...sig }),
+  });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error ?? "Could not bind wallet");
+  return ((await r.json()) as { profile: Profile }).profile;
+}
+
+/** Claim a reserved handle with only the token (no wallet). */
+export function useClaimNoWallet() {
+  return useMutation({
+    mutationFn: ({ token, profile }: { token: string; profile?: Profile }) =>
+      claimUsernameNoWallet(token, profile),
+  });
+}
+
+/** Edit a token-owned account's profile using the token credential. */
+export function useEditTokenProfile() {
+  return useMutation({
+    mutationFn: ({ token, profile }: { token: string; profile: Profile }) =>
+      editTokenProfile(token, profile),
+  });
+}
+
+/**
+ * Bind a real wallet to a token-owned account. On success, invalidates the
+ * wallet's profile so the migrated handle / preset / verified badge show up.
+ */
+export function useBindWallet() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ address, token, signer }: { address: string; token: string; signer: Signer }) =>
+      bindWallet(address, token, signer),
     onSuccess: (_p, { address }) => {
       void qc.invalidateQueries({ queryKey: ["social", "profile", address] });
     },

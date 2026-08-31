@@ -390,6 +390,72 @@ export async function claimUsername(address: string, token: string): Promise<Pro
   return data.profile ?? {};
 }
 
+/**
+ * DELIBERATE, DOCUMENTED EXCEPTION to the wallet-signature identity model.
+ *
+ * Claim a reserved username WITHOUT a wallet — the raw claim token is the only
+ * credential ("token-as-credential"). The claimed handle + preset (and verified
+ * badge) bind to a SYNTHETIC owner id `token-<username>` (never a real bech32
+ * wallet). No signature is involved: whoever holds the token controls the
+ * account until a real wallet is bound (see `bindWallet`). Returns the created
+ * profile and its synthetic `ownerId`. Requires the remote (Postgres) store.
+ */
+export async function claimUsernameNoWallet(
+  token: string,
+  profile?: Profile,
+): Promise<{ profile: Profile; ownerId: string }> {
+  if (!useRemoteProfiles) {
+    throw new Error("claims require the remote store");
+  }
+  // First create the token-owned account (no address => token-account claim).
+  const data = await socialWrite<{ profile?: Profile; ownerId?: string; error?: string }>(
+    "/social/claim",
+    { token },
+  );
+  const ownerId = data.ownerId ?? "";
+  // If the caller supplied initial profile fields, apply them via the
+  // token-authed editor so the account starts populated.
+  if (profile && (profile.displayName || profile.bio || profile.avatar || profile.banner)) {
+    const edited = await editTokenProfile(token, profile);
+    return { profile: edited, ownerId };
+  }
+  return { profile: data.profile ?? {}, ownerId };
+}
+
+/**
+ * Edit a TOKEN-OWNED account's mutable profile fields (displayName / bio /
+ * avatar / banner) using the claim token as the credential — no wallet
+ * signature. username + verified are locked server-side. Requires the remote
+ * store.
+ */
+export async function editTokenProfile(token: string, profile: Profile): Promise<Profile> {
+  if (!useRemoteProfiles) {
+    throw new Error("token-profile edits require the remote store");
+  }
+  const data = await socialWrite<{ profile?: Profile; error?: string }>("/social/token-profile", {
+    token,
+    profile,
+  });
+  return data.profile ?? {};
+}
+
+/**
+ * Bind a real wallet to a token-owned account. The wallet's signature was
+ * already verified by the Next route (proving the new owner); we forward the
+ * token + verified address to the indexer, which migrates ownership from
+ * `token-<username>` to the wallet and spends the token. Requires the remote store.
+ */
+export async function bindWallet(address: string, token: string): Promise<Profile> {
+  if (!useRemoteProfiles) {
+    throw new Error("wallet binding requires the remote store");
+  }
+  const data = await socialWrite<{ profile?: Profile; error?: string }>("/social/bind-wallet", {
+    token,
+    address,
+  });
+  return data.profile ?? {};
+}
+
 /** Resolve a handle (with or without leading @) to its bound address, or null. */
 export async function resolveUsername(raw: string): Promise<string | null> {
   if (useRemoteProfiles) {

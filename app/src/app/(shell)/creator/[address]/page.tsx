@@ -47,11 +47,19 @@ export default function CreatorPage() {
   const [copied, setCopied] = useState(false);
   const [shared, setShared] = useState(false);
 
+  // A token-owned account (claimed without a wallet) lives at a SYNTHETIC owner
+  // id `token-<username>`, not a bech32 `ansem1...` address. It is a real,
+  // publicly viewable profile, but it has no on-chain presence — so every query
+  // that hits the chain (bank balances, wallet token holdings) MUST be skipped
+  // for it, or those lookups would error / 404 on a non-address slug. Real wallet
+  // owners are `ansem1...`; guard on that prefix.
+  const isOnchainAddress = address.startsWith("ansem1");
+
   const { data: tokens } = useTokens();
   const holdings = useQuery({
     queryKey: ["wallet", "tokens", address],
     queryFn: () => fetchWalletTokens(address),
-    enabled: Boolean(address),
+    enabled: Boolean(address) && isOnchainAddress,
     staleTime: 30_000,
   });
 
@@ -59,7 +67,7 @@ export default function CreatorPage() {
   // chain REST bank module. Works for any address, not just the connected one.
   const nativeBalances = useQuery({
     queryKey: ["native-balances", address],
-    enabled: Boolean(address),
+    enabled: Boolean(address) && isOnchainAddress,
     staleTime: 30_000,
     queryFn: async () => {
       const res = await fetch(`${REST_URL}/cosmos/bank/v1beta1/balances/${address}`);

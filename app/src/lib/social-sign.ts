@@ -81,6 +81,18 @@ export function claimUsernameSignAction(token: string): string {
 }
 
 /**
+ * Bind a real wallet to a token-owned account (the "claim without a wallet" path).
+ * Binds the exact claim token so the signature proves BOTH the new wallet (it is
+ * the signer, verified upstream) AND which token-owned account is being bound.
+ * This is the security upgrade in the token-as-credential flow: the token alone
+ * created and edited the account, but promoting it to a wallet requires that
+ * wallet's signature. The signer becomes the account's new, permanent owner.
+ */
+export function bindWalletSignAction(token: string): string {
+  return `bind:${token}`;
+}
+
+/**
  * Read DMs (a thread or the inbox). Binds nothing but the action + ts (added by
  * socialAuthMessage), which is enough: the signature proves the caller owns the
  * address, and the Next route passes only that VERIFIED address to the indexer,
