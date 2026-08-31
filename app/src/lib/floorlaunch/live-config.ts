@@ -196,15 +196,20 @@ async function discoverHornVault(): Promise<string | null> {
  *  on-chain discovery via the launchpad/fee-share horns. Returns null only when
  *  every source fails, so callers can render the honest preview state. */
 export async function getHornVaultContract(): Promise<string | null> {
-  const env = getHornVaultAddress();
-  if (env) return env;
+  // LIVE DISCOVERY FIRST. Horn addresses change every regenesis, so a baked env
+  // (NEXT_PUBLIC_HORN_VAULT_ADDRESS) or a stale registry slot silently points the
+  // stake/claim UI at a dead vault. The launchpad->feeshare->vault chain is the
+  // always-current source of truth; env/registry are only fallbacks for when the
+  // chain is unreachable.
+  const discovered = await discoverHornVault();
+  if (discovered && discovered.startsWith("ansem1")) return discovered;
   try {
     const slot = (await loadRegistry()).hornVaultContract;
     if (slot && slot.startsWith("ansem1")) return slot;
   } catch {
-    /* fall through to on-chain discovery */
+    /* fall through to the baked env */
   }
-  return discoverHornVault();
+  return getHornVaultAddress();
 }
 
 /** REST endpoint: registry override wins, else the baked anchor. The baked
