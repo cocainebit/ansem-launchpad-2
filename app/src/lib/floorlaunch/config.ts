@@ -54,10 +54,10 @@ export interface StockDenom {
   logo: string;
 }
 export const STOCK_DENOMS: StockDenom[] = [
-  { key: "nvdax", denom: BASE_DENOMS.nvdax, ticker: "NVDA", name: "Nvidia", color: "#76b900", logo: "/stocks/nvda.svg" },
-  { key: "tslax", denom: BASE_DENOMS.tslax, ticker: "TSLA", name: "Tesla", color: "#e31937", logo: "/stocks/tsla.svg" },
-  { key: "aaplx", denom: BASE_DENOMS.aaplx, ticker: "AAPL", name: "Apple", color: "#a3aab2", logo: "/stocks/aapl.svg" },
-  { key: "spyx", denom: BASE_DENOMS.spyx, ticker: "SPY", name: "S&P 500 ETF", color: "#4b8dff", logo: "/stocks/spy.svg" },
+  { key: "nvdax", denom: BASE_DENOMS.nvdax, ticker: "NVDA", name: "Nvidia", color: "#76b900", logo: "/stocks/nvda.png" },
+  { key: "tslax", denom: BASE_DENOMS.tslax, ticker: "TSLA", name: "Tesla", color: "#e31937", logo: "/stocks/tsla.png" },
+  { key: "aaplx", denom: BASE_DENOMS.aaplx, ticker: "AAPL", name: "Apple", color: "#a3aab2", logo: "/stocks/aapl.png" },
+  { key: "spyx", denom: BASE_DENOMS.spyx, ticker: "SPY", name: "S&P 500 ETF", color: "#4b8dff", logo: "/stocks/spy.png" },
 ];
 export function isStockDenomKey(k: string): k is StockDenomKey {
   return STOCK_DENOMS.some((s) => s.key === k);
